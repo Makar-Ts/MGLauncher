@@ -1,0 +1,3 @@
+from /build/
+
+pyinstaller -F --add-data="../inital/*;inital/" --add-data="../assets/*;assets/" ../main.py
