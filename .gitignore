@@ -1,0 +1,16 @@
+build
+build/*
+
+__pycache__
+__pycache__/*
+
+.vscode
+.vscode/*
+
+config
+config/*
+
+logs
+logs/*
+
+level.dat

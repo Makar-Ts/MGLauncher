@@ -1,0 +1,90 @@
+QWidget {
+    background-color: #333;
+    color: #fff;
+    font-family: Bahnschrift SemiBold;
+    font-size: 16px;
+}
+
+QPushButton {
+    background-color: #555;
+    color: #fff;
+    border: 1px solid #444;
+    padding: 5px;
+}
+
+QPushButton:hover {
+    border: 3px solid #444;
+}
+
+QPushButton:pressed {
+    background-color: #444;
+}
+
+QPushButton:disabled {
+    background-color: #222;
+    color: #888;
+}
+
+QComboBox {
+    background-color: #555;
+    color: #fff;
+    border: 1px solid #444;
+    padding: 5px;
+}
+
+QComboBox:hover {
+    border-left: 10px solid #444;
+}
+
+QComboBox:disabled {
+    background-color: #222;
+    color: #888;
+}
+
+QLabel {
+    background-color: #00000000;
+    color: #fff;
+}
+
+QLineEdit {
+    background-color: #555;
+    color: #fff;
+    border: 1px solid #444;
+    padding: 5px;
+}
+
+QLineEdit:disabled {
+    background-color: #222;
+    color: #888;
+}
+
+QProgressBar {
+    background-color: #555;
+    color: #fff;
+    border: 1px solid #444;
+    padding: 3px;
+    text-align: center;
+}
+
+QProgressBar::chunk {
+    background-color: #bdbdbd;
+}
+
+QListWidget {
+    background-color: #555;
+    color: #fff;
+    border: 1px solid #444;
+    padding: 5px;
+}
+
+QListWidget::item {
+    background-color: #555;
+    color: #fff;
+    border: 1px solid #444;
+    padding: 5px;
+    height: 20px;
+}
+
+QListWidget::item:selected {
+    background-color: #444;
+}
