@@ -1,22 +1,24 @@
+import configparser
 import io
-from math import e
-
-from exceptiongroup import catch
-import minecraft_manager as mm
-from PyQt5 import QtWidgets, QtGui
-from PyQt5.QtCore import QThread, pyqtSignal, QSize, Qt
+import sys
+import os
+import shutil
+import zipfile
+import json
+from tkinter import filedialog
+import tomli
+from PyQt5 import QtWidgets
+from PyQt5.QtCore import QThread, pyqtSignal
 from assets.main_ui import Ui_MainWindow
 from assets.download_menu_ui import Ui_DownloadWindow
 from assets.create_menu_ui import Ui_CreateWindow
-from tkinter import W, filedialog
-import sys, os, shutil, zipfile, tomli, json
-import configparser
+import minecraft_manager as mm
 
 print(sys.path)
-PATH_NUM = 2
+PATH_NUM = 0
 
 CSS_STYLESHEET = sys.path[PATH_NUM] + "/assets/main_style.css"
-INITAL_DIRS = {
+INITAL_DIRS = {      # Если директории нет в папке mc то отсюда будут брать данные
     "player_data":     sys.path[PATH_NUM] + "/inital/player_data.ini",
     "vlaunchers_data": sys.path[PATH_NUM] + "/inital/vlaunchers_data.json"
 }
@@ -24,7 +26,7 @@ LAUNCHER_DIRS = {
     "launcher":        mm.MC_DIR + "/.mglauncher/",
     "player_data":     mm.MC_DIR + "/.mglauncher/player_data.ini",
     "vlaunchers_data": mm.MC_DIR + "/.mglauncher/vlaunchers_data.json",
-    "vlaunchers":      mm.MC_DIR + "/.mglauncher/vlaunchers/",
+    "vlaunchers":      mm.MC_DIR + "/.mglauncher/vlaunchers/",           # Папка с сохраненными сборками
     "mc_mods":         mm.MC_DIR + "/mods/",
     "mc_old_mods":     mm.MC_DIR + "/mods/old/",
     "mc_versions":     mm.MC_DIR + "/versions/"
@@ -33,19 +35,22 @@ LAUNCHER_DIRS = {
 """ vlaunchers_data.json structure
 
 "name" {
-    "name" : "vlauncher name",
-    "version": "any mc version",
-    "type: "forge/fabric"
+    "name" : "vlauncher name",       # имя в папке vlaunchers
+    "version": "version to start",   # если при fabric обычная версия, то парсит список установленных
+    "type: "forge/fabric"            
 }
 
 """
 
-MODS_DATA_PATH = {
+MODS_DATA_PATH = {      # расположение инфы о моде (имени) внутри .jar файла
     "forge": "META-INF/mods.toml",
     "fabric": "fabric.mod.json"
 }
 
 class SelectedMod:
+    """Store information about selected mod.
+    """
+
     def __init__(self, path, name):
         self.path = path
         self.name = name
@@ -53,7 +58,7 @@ class SelectedMod:
 
 class LaunchThread(QThread):
     launch_setup_signal = pyqtSignal(str, str, int)
-    progress_update_signal = pyqtSignal(int, int, str) 
+    progress_update_signal = pyqtSignal(int, int, str)
     run_complete_callback = pyqtSignal(int) # exit code
 
     version_id = ''
@@ -63,7 +68,7 @@ class LaunchThread(QThread):
     progress = 0
     progress_max = 0
     progress_label = ''
-    
+
     def __init__(self):
         super().__init__()
         self.launch_setup_signal.connect(self.launch_setup)
@@ -86,11 +91,11 @@ class LaunchThread(QThread):
         self.progress_update_signal.emit(self.progress, self.progress_max, self.progress_label)
     
     def run(self):
-        if (self.run_type == 1 or self.run_type == 2 or self.run_type == 3):
+        if self.run_type == 1 or self.run_type == 2 or self.run_type == 3:
             try:
                 _type = "vanilla"
-                if (self.run_type == 2): _type = "forge"
-                elif (self.run_type == 3): _type = "fabric" 
+                if self.run_type == 2: _type = "forge"
+                elif self.run_type == 3: _type = "fabric" 
                 
                 mlauncher = mm.MinecraftVersionLauncher(self.username, self.version_id, _type)
 
@@ -100,7 +105,7 @@ class LaunchThread(QThread):
                     "setMax": self.retranslate_download_max
                 }
                 
-                if (not mlauncher.check_minecraft_version()):
+                if not mlauncher.check_minecraft_version():
                     print(f"Minecraft version {self.version_id} not available for type {self.run_type}")
                     self.run_complete_callback.emit(-2)
                     return -2
@@ -110,9 +115,9 @@ class LaunchThread(QThread):
                 self.run_complete_callback.emit(1)
             except Exception as err:
                 print(f"Failed to install Minecraft version [ {self.version_id} ] because [ {err} ]")
-                return -2
                 self.run_complete_callback.emit(-2)
-        elif (self.run_type == 0):
+                return -2
+        elif self.run_type == 0:
             mlauncher = mm.MinecraftVersionLauncher(self.username, self.version_id)
         
             mlauncher.start_minecraft_version()
@@ -136,7 +141,7 @@ class DownloadWindow(QtWidgets.QMainWindow):
         
     def set_download_progress(self, progress: int):
         if self.current_max != 0:
-            self.ui.progressBar.setValue(int(progress/self.current_max*100))
+            self.ui.progressBar.setValue(int(progress/self.current_max*100)) # максимум (по стандарту) 100 едениц
             
     def set_download_max(self, new_max: int):
         self.current_max = new_max
@@ -161,7 +166,7 @@ class CreateWindow(QtWidgets.QMainWindow):
         self.ui.comboBox_avalableVersions.addItem("Fabric")
         self.ui.comboBox_avalableVersions.currentIndexChanged.connect(self.onChanged_avalableVersions)
 
-        self.ui.button_mod_add.setEnabled(False)
+        self.ui.button_mod_add.setEnabled(False)     # устанавливаем кнопки модов и строки имени на выключено при ваниле
         self.ui.button_mod_remove.setEnabled(False)
         self.ui.line_launcherName.setEnabled(False)
         
@@ -171,7 +176,6 @@ class CreateWindow(QtWidgets.QMainWindow):
         self.ui.button_mod_remove.clicked.connect(self.onClicked_mod_remove)
         
     def onClicked_create(self):
-        
         self.ui.button_mod_add.setEnabled(False)
         self.ui.button_mod_remove.setEnabled(False)
         self.ui.line_launcherName.setEnabled(False)
@@ -184,19 +188,19 @@ class CreateWindow(QtWidgets.QMainWindow):
         mods = filedialog.askopenfilenames(filetypes=[('JAR files', '*.jar')])
         
         for i in mods:
-            with zipfile.ZipFile(i, 'r') as mod:
+            with zipfile.ZipFile(i, 'r') as mod: # распаковываем файл
                 name = ''
                 
                 try:
-                    if (self.ui.comboBox_avalableVersions.currentIndex() == 1):
+                    if self.ui.comboBox_avalableVersions.currentIndex() == 1:
                         mod_info = mod.read(MODS_DATA_PATH["forge"])
                         
                         mod_info_file = io.BytesIO(mod_info)
                     
-                        toml = tomli.load(mod_info_file)
+                        toml = tomli.load(mod_info_file)  # чтение .toml файла
                         
                         name = toml["mods"][0]["displayName"]
-                    elif (self.ui.comboBox_avalableVersions.currentIndex() == 2):
+                    elif self.ui.comboBox_avalableVersions.currentIndex() == 2:
                         with mod.open(MODS_DATA_PATH["fabric"]) as mod_json:
                             data = json.load(mod_json)
                             name = data["name"]
@@ -204,7 +208,7 @@ class CreateWindow(QtWidgets.QMainWindow):
                     print(f"Could not load mod [ {i} ] configuration file. Error: {err}")
                     continue
                 
-                if (name != ''):
+                if name != '':
                     mod = SelectedMod(i, name)
                     
                     self.mods_selected.append(mod)
@@ -214,7 +218,7 @@ class CreateWindow(QtWidgets.QMainWindow):
     
     def onClicked_mod_remove(self):
         selected_items = self.ui.list_mods.selectedItems()
-        if (len(selected_items) != 0):
+        if len(selected_items) != 0:
             for item in reversed(selected_items):
                 row = self.ui.list_mods.row(item)
 
@@ -227,7 +231,7 @@ class CreateWindow(QtWidgets.QMainWindow):
         self.mods_selected.clear()
         self.ui.list_mods.clear()
         
-        if (self.ui.comboBox_avalableVersions.currentIndex() == 0):
+        if self.ui.comboBox_avalableVersions.currentIndex() == 0:
             versions = mm.get_all_versions()
             self.ui.comboBox_avalableTypes.clear()
         
@@ -277,6 +281,7 @@ class MainWindow(QtWidgets.QMainWindow):
         
         self.ui.button_start.clicked.connect(self.onClick_start)
         self.ui.button_check.clicked.connect(self.onClick_check)
+        self.ui.button_check.setText("Check")
         self.ui.button_createNew.clicked.connect(self.onClick_new)
         self.ui.button_delete.clicked.connect(self.onClick_delete)
         
@@ -318,13 +323,13 @@ class MainWindow(QtWidgets.QMainWindow):
     def install(self, version, _type, name="", mods=[]):
         self.downloadWindow.show()
         
-        if (_type != 0 and len(mods) != 0 and name != ""):
+        if _type != 0 and len(mods) != 0 and name != "":
             data_version = version
-            if (_type == 1):
+            if _type == 1:
                 splitted = version.split("-")
                 
                 data_version = splitted[0] + "-forge-" + splitted[1]        
-            elif (_type == 2):
+            elif _type == 2:
                 data_version = version
             
             new_VLauncher = {
@@ -365,40 +370,40 @@ class MainWindow(QtWidgets.QMainWindow):
         
     
     def runCallback(self, code):
-        if (code == 0):
-            if (self.current_mods != []):
+        if code == 0:
+            if self.current_mods != []:
                 deleted_mods = os.listdir(LAUNCHER_DIRS["mc_mods"])
                 
                 for i in deleted_mods:
-                    if (i.split(".")[-1] == "jar"):
+                    if i.split(".")[-1] == "jar":
                         os.remove(LAUNCHER_DIRS["mc_mods"]+i)
                 self.current_mods = []
             
             self.show()
-        elif (code == 1):
+        elif code == 1:
             self.update_versions_comboBox()
             
             self.downloadWindow.hide()
             self.createWindow.hide()
-        elif (code == -2):
+        elif code == -2:
             self.downloadWindow.hide()
             self.createWindow.hide()
     
     def onClick_start(self):
         self.hide()
         
-        if (self.ui.comboBox_avalableTypes.currentIndex() == 0):
+        if self.ui.comboBox_avalableTypes.currentIndex() == 0:
             self.launch_thread.launch_setup_signal.emit(mm.get_installed_versions()[self.ui.comboBox_avalableVersions.currentIndex()][0], self.username, 0)
             self.launch_thread.start()
-        elif (self.ui.comboBox_avalableTypes.currentIndex() == 1):
+        elif self.ui.comboBox_avalableTypes.currentIndex() == 1:
             version = self.get_vlaunchers()[self.ui.comboBox_avalableVersions.currentIndex()]
             
-            if (version['type'] == "fabric"):
-                if (version['version'][0].isdigit()):
+            if version['type'] == "fabric":
+                if version['version'][0].isdigit():
                     ver_to_parse = mm.get_installed_versions()
                     
                     for i in ver_to_parse:
-                        if (version['version'] in i[0] and "fabric-loader-" in i[0]):
+                        if version['version'] in i[0] and "fabric-loader-" in i[0]:
                             with open(LAUNCHER_DIRS["vlaunchers_data"], 'r+') as file:
                                 file_data = json.load(file)
                                 
@@ -414,7 +419,7 @@ class MainWindow(QtWidgets.QMainWindow):
             old_mods = os.listdir(LAUNCHER_DIRS["mc_mods"])
             
             for i in old_mods:
-                if (i.split(".")[-1] == "jar"):
+                if i.split(".")[-1] == "jar":
                     shutil.move(LAUNCHER_DIRS["mc_mods"]+"/"+i, LAUNCHER_DIRS["mc_old_mods"]+i.split("/")[-1])
             
             self.current_mods = os.listdir(LAUNCHER_DIRS["vlaunchers"]+version['name'])
@@ -436,11 +441,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.createWindow.show()
     
     def onClick_delete(self):
-        if (self.ui.comboBox_avalableTypes.currentIndex() == 0):
+        if self.ui.comboBox_avalableTypes.currentIndex() == 0:
             shutil.rmtree(LAUNCHER_DIRS["mc_versions"]+mm.get_installed_versions()[self.ui.comboBox_avalableVersions.currentIndex()][0])
             
             self.update_versions_comboBox()
-        elif (self.ui.comboBox_avalableTypes.currentIndex() == 1):
+        elif self.ui.comboBox_avalableTypes.currentIndex() == 1:
             vlauncher_name = ""
             with open(LAUNCHER_DIRS["vlaunchers_data"], 'r+') as file:
                 data = json.load(file)
@@ -458,6 +463,11 @@ class MainWindow(QtWidgets.QMainWindow):
     def onChanged_type(self):
         self.update_versions_comboBox()
         
+        if self.ui.comboBox_avalableTypes.currentIndex() == 0:
+            self.ui.button_check.setText("Check")
+        elif self.ui.comboBox_avalableTypes.currentIndex() == 1:
+            self.ui.button_check.setText("Edit")
+        
     def update_progress(self, progress, max_progress, label):
         print(f"[ {label} ] - {progress}/{max_progress}")
         
@@ -466,13 +476,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.downloadWindow.set_download_progress(progress)
     
     def update_versions_comboBox(self):
-        if (self.ui.comboBox_avalableTypes.currentIndex() == 0):
+        if self.ui.comboBox_avalableTypes.currentIndex() == 0:
             installed_versions = mm.get_installed_versions()
             self.ui.comboBox_avalableVersions.clear()
             
             for i in installed_versions:
                 self.ui.comboBox_avalableVersions.addItem(f"{i[0]}{(i[1] != 'release')*(' - '+i[1])}")
-        elif (self.ui.comboBox_avalableTypes.currentIndex() == 1):
+        elif self.ui.comboBox_avalableTypes.currentIndex() == 1:
             installed_versions = self.get_vlaunchers()
             self.ui.comboBox_avalableVersions.clear()
             
@@ -489,18 +499,18 @@ class MainWindow(QtWidgets.QMainWindow):
                 return []
         
  
-if (__name__ == "__main__"):
-    if (not os.path.exists(LAUNCHER_DIRS["launcher"])):
+if __name__ == "__main__":
+    if not os.path.exists(LAUNCHER_DIRS["launcher"]):
         os.mkdir(LAUNCHER_DIRS["launcher"])
-    if (not os.path.exists(LAUNCHER_DIRS["player_data"])):
+    if not os.path.exists(LAUNCHER_DIRS["player_data"]):
         shutil.copyfile(INITAL_DIRS["player_data"], LAUNCHER_DIRS["player_data"])
-    if (not os.path.exists(LAUNCHER_DIRS["vlaunchers_data"])):
+    if not os.path.exists(LAUNCHER_DIRS["vlaunchers_data"]):
         shutil.copyfile(INITAL_DIRS["vlaunchers_data"], LAUNCHER_DIRS["vlaunchers_data"])
-    if (not os.path.exists(LAUNCHER_DIRS["vlaunchers"])):
+    if not os.path.exists(LAUNCHER_DIRS["vlaunchers"]):
         os.mkdir(LAUNCHER_DIRS["vlaunchers"])
-    if (not os.path.exists(LAUNCHER_DIRS["mc_mods"])):
+    if not os.path.exists(LAUNCHER_DIRS["mc_mods"]):
         os.mkdir(LAUNCHER_DIRS["mc_mods"])
-    if (not os.path.exists(LAUNCHER_DIRS["mc_old_mods"])):
+    if not os.path.exists(LAUNCHER_DIRS["mc_old_mods"]):
         os.mkdir(LAUNCHER_DIRS["mc_old_mods"])
     
     app = QtWidgets.QApplication([])
