@@ -1,10 +1,11 @@
+# pylint: disable=line-too-long, invalid-name, import-error, multiple-imports, unspecified-encoding, broad-exception-caught, trailing-whitespace
+
+"""Main script
+"""
+
 import configparser
-import io
-import sys
-import os
-import shutil
-import zipfile
-import json
+import io, sys, os
+import shutil, zipfile, json
 from tkinter import filedialog
 import tomli
 from PyQt5 import QtWidgets
@@ -15,7 +16,7 @@ from assets.create_menu_ui import Ui_CreateWindow
 import minecraft_manager as mm
 
 print(sys.path)
-PATH_NUM = 0
+PATH_NUM = 2
 
 CSS_STYLESHEET = sys.path[PATH_NUM] + "/assets/main_style.css"
 INITAL_DIRS = {      # Если директории нет в папке mc то отсюда будут брать данные
@@ -199,7 +200,7 @@ class DownloadWindow(QtWidgets.QMainWindow):
         """
 
         if self.current_max != 0:
-            self.ui.progressBar.setValue(int(progress/self.current_max*100)) 
+            self.ui.progressBar.setValue(int(progress/self.current_max*100))
                 # максимум (по стандарту) 100 едениц
 
     def set_download_max(self, new_max: int):
@@ -428,7 +429,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if _type == 1:
                 splitted = version.split("-")
 
-                data_version = splitted[0] + "-forge-" + splitted[1]        
+                data_version = splitted[0] + "-forge-" + splitted[1]
             elif _type == 2:
                 data_version = version
 
@@ -479,8 +480,8 @@ class MainWindow(QtWidgets.QMainWindow):
                          1 - created new version
                          errors:
                          -2 - error while creating new version]
-        """        
-        
+        """
+
         if code == 0:
             if self.current_mods != []:
                 deleted_mods = os.listdir(LAUNCHER_DIRS["mc_mods"])
@@ -502,7 +503,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def onClick_start(self):
         """Start the mc launch
-        """        
+        """
 
         self.hide()
 
@@ -640,7 +641,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         Returns:
             [list]: [check the vlauncher_data structure]
-        """        
+        """
 
         with open(LAUNCHER_DIRS["vlaunchers_data"], 'r') as file:
             try:
