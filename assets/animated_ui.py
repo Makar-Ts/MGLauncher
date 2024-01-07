@@ -1,5 +1,7 @@
-from PyQt5.QtCore import QPropertyAnimation, QEasingCurve, pyqtProperty
-from PyQt5.QtWidgets import QComboBox, QApplication, QStyle
+# pylint: disable=line-too-long, invalid-name, import-error, multiple-imports, unspecified-encoding, broad-exception-caught, trailing-whitespace, no-name-in-module, unused-import
+
+from PyQt5.QtCore import QPropertyAnimation, QEasingCurve, pyqtProperty, pyqtSignal, Qt, QSize, QEvent
+from PyQt5.QtWidgets import QComboBox, QApplication, QStyle, QListWidget, QListWidgetItem, QLabel, QVBoxLayout, QWidget, QPushButton
 
 class AnimatedComboBox(QComboBox):
     def __init__(self, parent=None):
@@ -35,3 +37,17 @@ class AnimatedComboBox(QComboBox):
     @borderWidth.setter
     def borderLeftWidth(self, value):
         self.setStyleSheet(f"QComboBox {{ border-left: {value}px solid #444; }}")
+
+class CustomWidgetItem(QListWidgetItem):
+    def __init__(self, text):
+        super(CustomWidgetItem, self).__init__()
+
+        self.widget = QLabel(text)
+        self.widget.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    
+    def enterEvent(self, QEvent):
+        print("Enter event")
+        self.setSizeHint(QSize(self.sizeHint().width(), self.sizeHint().height() + 50))
+
+    def leaveEvent(self, QEvent):
+        self.setSizeHint(self.widget.sizeHint())

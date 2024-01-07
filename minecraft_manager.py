@@ -1,3 +1,5 @@
+# pylint: disable=line-too-long, invalid-name, import-error, multiple-imports, unspecified-encoding, broad-exception-caught, trailing-whitespace
+
 """This module is used to create a version object that can be used to recreate the versions of the Minecraft .
 """
 
@@ -138,15 +140,19 @@ class MinecraftVersionLauncher:
                                         minecraft_directory=MC_DIR, \
                                         callback=callback)
     
-    def start_minecraft_version(self):
+    def start_minecraft_version(self, jvm_args: str|list[str]=""):
         """Starting the mc version
         Recommend run the check_minecraft_version function before starting
+        
+        Args:
+            jvm_args (str|list[str], optional): [jvmArguments]. Defaults to "".
         """
         
         options = {
             'username': self.username,
             'uuid': str(uuid1()),
-            'token': ''                 # оставлять пустым (при пиратке)
+            'token': '',                # оставлять пустым (при пиратке)
+            "jvmArguments": jvm_args
         }
 
         subprocess.call(mllib.command.get_minecraft_command(version=self.version, \

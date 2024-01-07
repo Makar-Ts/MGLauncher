@@ -1,4 +1,4 @@
-# pylint: disable=line-too-long, invalid-name, import-error, multiple-imports, unspecified-encoding, broad-exception-caught, trailing-whitespace
+# pylint: disable=line-too-long, invalid-name, import-error, multiple-imports, unspecified-encoding, broad-exception-caught, trailing-whitespace, no-name-in-module, unused-import
 
 """Main script
 """
@@ -13,10 +13,13 @@ from PyQt5.QtCore import QThread, pyqtSignal
 from assets.main_ui import Ui_MainWindow
 from assets.download_menu_ui import Ui_DownloadWindow
 from assets.create_menu_ui import Ui_CreateWindow
+from assets.edit_menu_ui import Ui_EditWindow
+from assets.animated_ui import CustomWidgetItem
 import minecraft_manager as mm
+import mc_mod_manager as mcmm
 
 print(sys.path)
-PATH_NUM = 2
+PATH_NUM = 0
 
 CSS_STYLESHEET = sys.path[PATH_NUM] + "/assets/main_style.css"
 INITAL_DIRS = {      # Если директории нет в папке mc то отсюда будут брать данные
@@ -48,6 +51,21 @@ MODS_DATA_PATH = {      # расположение инфы о моде (име�
     "fabric": "fabric.mod.json"
 }
 
+def get_vlaunchers():
+    """Get vaunchers from the file
+
+    Returns:
+        [list]: [check the vlauncher_data structure]
+    """
+
+    with open(LAUNCHER_DIRS["vlaunchers_data"], 'r') as file:
+        try:
+            file_data = json.load(file)
+
+            return file_data["vlaunchers"]
+        except json.decoder.JSONDecodeError:
+            return []
+
 class SelectedMod:
     """Store information about selected mod.
     """
@@ -61,13 +79,14 @@ class LaunchThread(QThread):
     """Creating separate stream for downloading and running mc.
     """
 
-    launch_setup_signal = pyqtSignal(str, str, int)
+    launch_setup_signal = pyqtSignal(str, str, int, str)
     progress_update_signal = pyqtSignal(int, int, str)
     run_complete_callback = pyqtSignal(int) # exit code
 
     version_id = ''
     username = ''
     run_type = 0
+    jvm_args = ""
 
     progress = 0
     progress_max = 0
@@ -77,7 +96,7 @@ class LaunchThread(QThread):
         super().__init__()
         self.launch_setup_signal.connect(self.launch_setup)
 
-    def launch_setup(self, version_id:str, username:str, _type:int):
+    def launch_setup(self, version_id:str, username:str, _type:int, args:str):
         """Setup the thread.
 
         Args:
@@ -87,11 +106,13 @@ class LaunchThread(QThread):
                           1 for install vanilla, 
                           2 for install forge, 
                           3 for install fabric]
+            args [str]: [JVM startup arguments]
         """
 
         self.version_id = version_id
         self.username = username
         self.run_type = _type
+        self.jvm_args = args
 
     def retranslate_download_status(self, status: str):
         """Re - emit the download status.
@@ -149,9 +170,7 @@ class LaunchThread(QThread):
                     self.run_complete_callback.emit(-2)
                     return -2
 
-                print(f"==========================\
-                        Downloading Minecraft [ {self.version_id} ]\
-                        ==========================")
+                print(f"==========================Downloading Minecraft [ {self.version_id} ]==========================")
                 mlauncher.install_minecraft_version(callback, self.run_type-1)
                 self.run_complete_callback.emit(1)
 
@@ -164,7 +183,7 @@ class LaunchThread(QThread):
         elif self.run_type == 0:
             mlauncher = mm.MinecraftVersionLauncher(self.username, self.version_id)
 
-            mlauncher.start_minecraft_version()
+            mlauncher.start_minecraft_version([self.jvm_args])
 
             self.run_complete_callback.emit(0)
 
@@ -211,6 +230,147 @@ class DownloadWindow(QtWidgets.QMainWindow):
         """
 
         self.current_max = new_max
+
+class EditWindow(QtWidgets.QMainWindow):
+    """Window for editing already existing vlaunchers.
+    """    
+    
+    mods_selected = []
+    current_vlauncher_data = {}
+    current_vlauncher_index = 0
+    
+    def __init__(self):
+        super(EditWindow, self).__init__()
+        self.ui = Ui_EditWindow()
+        self.ui.setupUi(self)
+        
+        self.ui.button_mod_add.clicked.connect(self.onClick_add_mod)
+        self.ui.button_mod_remove.clicked.connect(self.onClick_remove_mod)
+        self.ui.button_create.clicked.connect(self.onClick_save)
+    
+    def setup_mod_ui(self, vlauncher_data: dict, vlauncher_index: int):
+        """Setup ui before showing up window
+
+        Args:
+            vlauncher_data (dict): [check vlaunchers_data.json structure]
+            vlauncher_index (int)
+
+        Raises:
+            ValueError: [if version not found]
+        """  
+        self.current_vlauncher_data = vlauncher_data
+        self.current_vlauncher_index = vlauncher_index
+                           
+        self.ui.comboBox_avalableVersions.clear()
+        self.ui.list_mods.clear()
+        
+        installed_versions = mm.get_installed_versions()
+        
+        if vlauncher_data['type'] == "fabric" and vlauncher_data['version'][0].isdigit():
+            for i in installed_versions:
+                if vlauncher_data['version'] in i[0] and "fabric-loader-" in i[0]:
+                    with open(LAUNCHER_DIRS["vlaunchers_data"], 'r+') as file:
+                        file_data = json.load(file)
+
+                        file_data["vlaunchers"]\
+                            [self.ui.comboBox_avalableVersions.currentIndex()]["version"] = i[0]
+
+                        file.seek(0)
+                        json.dump(file_data, file, indent = 4)
+
+                        vlauncher_data['version'] = i[0]
+                        self.current_vlauncher_data['version'] = i[0]
+
+                        break
+        
+        current_ver_index = -1
+        for index, i in enumerate(installed_versions):
+            self.ui.comboBox_avalableVersions.addItem(i[0])
+            
+            if i[0] == vlauncher_data['version']:
+                current_ver_index = index
+        
+        if current_ver_index == -1:
+            raise ValueError("Version not found")
+            
+        self.ui.comboBox_avalableVersions.setCurrentIndex(current_ver_index)
+        
+        mods = list(map(lambda x: LAUNCHER_DIRS["vlaunchers"]+vlauncher_data['name']+"/"+x, os.listdir(LAUNCHER_DIRS["vlaunchers"]+vlauncher_data['name'])))
+        
+        for i in mods:
+            mod = mcmm.get_mod_data(i)
+
+            if mod is not None:
+                if mod.name != '':
+                    self.mods_selected.append(mod)
+                    #self.ui.list_mods.addItem(mod.name)
+                    
+                    item = QtWidgets.QListWidgetItem()
+                    item.setText(mod.name)
+                    item.setToolTip(f"{mod.description}\n\nVersion: {mod.version}\nAuthors: {mod.authors}\n")
+                    self.ui.list_mods.addItem(item)
+
+                    print(f"Mod [ {mod.name} ] added succesfully")
+                else:
+                    print(f" Mod [ {mod.name} ] launcher type is incorrect")
+    
+    def onClick_add_mod(self):
+        """Add a mod to the list
+        """
+
+        mods = filedialog.askopenfilenames(filetypes=[('JAR files', '*.jar')])
+
+        for i in mods:
+            mod = mcmm.get_mod_data(i)
+
+            if mod is not None:
+                if mod.name != '' and mod.launcher_type == self.current_vlauncher_data['type']:
+                    self.mods_selected.append(mod)
+                    #self.ui.list_mods.addItem(mod.name)
+                    
+                    item = QtWidgets.QListWidgetItem()
+                    item.setText(mod.name)
+                    item.setToolTip(f"{mod.description}\n\nVersion: {mod.version}\nAuthors: {mod.authors}\n")
+                    self.ui.list_mods.addItem(item)
+                    
+                    mod_name = mod.path.split("/")[-1]
+                    shutil.copyfile(mod.path, LAUNCHER_DIRS["vlaunchers"]+self.current_vlauncher_data['name']+"/"+mod_name)
+
+                    print(f"Mod [ {mod.name} ] added succesfully")
+                else:
+                    print(f" Mod [ {mod.name} ] launcher type is incorrect")
+    
+    def onClick_remove_mod(self):
+        """Remove a mod from the list
+        """
+
+        selected_items = self.ui.list_mods.selectedItems()
+        if len(selected_items) != 0:
+            for item in reversed(selected_items):
+                row = self.ui.list_mods.row(item)
+
+                self.ui.list_mods.takeItem(row)
+                os.remove(self.mods_selected[row].path)
+                self.mods_selected.remove(self.mods_selected[row])
+
+                print(f"Mod [ row:{row} ] removed")
+    
+    def onClick_save(self):
+        """Save the current version of the vlauncher to the file and closes the window.
+        """        
+        
+        if self.ui.comboBox_avalableVersions.currentData() != self.current_vlauncher_data['version']:
+            with open(LAUNCHER_DIRS["vlaunchers_data"], 'r+') as file:
+                file_data = json.load(file)
+
+                file_data["vlaunchers"]\
+                    [self.current_vlauncher_index]["version"] = self.ui.comboBox_avalableVersions.currentText()
+
+                file.seek(0)
+                json.dump(file_data, file, indent = 4)
+                
+        self.hide()
+        
 
 class CreateWindow(QtWidgets.QMainWindow):
     """Class for create_window where creating new VLaunchers.
@@ -266,35 +426,24 @@ class CreateWindow(QtWidgets.QMainWindow):
         """
 
         mods = filedialog.askopenfilenames(filetypes=[('JAR files', '*.jar')])
+        index = self.ui.comboBox_avalableVersions.currentIndex()
 
         for i in mods:
-            with zipfile.ZipFile(i, 'r') as mod: # распаковываем файл
-                name = ''
+            mod = mcmm.get_mod_data(i)
 
-                try:
-                    if self.ui.comboBox_avalableVersions.currentIndex() == 1:
-                        mod_info = mod.read(MODS_DATA_PATH["forge"])
-
-                        mod_info_file = io.BytesIO(mod_info)
-
-                        toml = tomli.load(mod_info_file)  # чтение .toml файла
-
-                        name = toml["mods"][0]["displayName"]
-                    elif self.ui.comboBox_avalableVersions.currentIndex() == 2:
-                        with mod.open(MODS_DATA_PATH["fabric"]) as mod_json:
-                            data = json.load(mod_json)
-                            name = data["name"]
-                except Exception as err:
-                    print(f"Could not load mod [ {i} ] configuration file. Error: {err}")
-                    continue
-
-                if name != '':
-                    mod = SelectedMod(i, name)
-
+            if mod is not None:
+                if mod.name != '' and mod.launcher_type == ((index == 1)*"forge" + (index == 2)*"fabric"):
                     self.mods_selected.append(mod)
-                    self.ui.list_mods.addItem(name)
+                    #self.ui.list_mods.addItem(mod.name)
+                    
+                    item = QtWidgets.QListWidgetItem()
+                    item.setText(mod.name)
+                    item.setToolTip(f"{mod.description}\n\nVersion: {mod.version}\nAuthors: {mod.authors}\n")
+                    self.ui.list_mods.addItem(item)
 
-                    print(f"Mod [ {name} ] added succesfully")
+                    print(f"Mod [ {mod.name} ] added succesfully")
+                else:
+                    print(f" Mod [ {mod.name} ] launcher type is incorrect")
 
     def onClicked_mod_remove(self):
         """Remove a mod from the list
@@ -398,6 +547,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.create_window = CreateWindow()
         self.create_window.setWindowTitle("Create new")
         self.create_window.onClick_create.connect(self.install)
+        
+        self.edit_window = EditWindow()
+        self.edit_window.setWindowTitle("Edit")
 
         with open(CSS_STYLESHEET, "r") as f:
             css = f.read()
@@ -405,12 +557,13 @@ class MainWindow(QtWidgets.QMainWindow):
             self.setStyleSheet(css)
             self.download_window.setStyleSheet(css)
             self.create_window.setStyleSheet(css)
+            self.edit_window.setStyleSheet(css)
 
         self.launch_thread = LaunchThread()
         self.launch_thread.progress_update_signal.connect(self.update_progress)
         self.launch_thread.run_complete_callback.connect(self.run_callback)
 
-    def install(self, version:str, _type:int, name="", mods: list[SelectedMod]=[]):
+    def install(self, version:str, _type:int, name="", mods: list[mcmm.ModData]=[]):
         """install a new mc version (or vlauncher)
 
         Args:
@@ -419,7 +572,7 @@ class MainWindow(QtWidgets.QMainWindow):
                              1 for install forge, 
                              2 for install fabric]
             name (str, optional): [vlauncher's name]. Defaults to "".
-            mods (list[SelectedMod], optional): [vlauncher's mods]. Defaults to [].
+            mods (list[mc_mod_manager.ModData], optional): [vlauncher's mods]. Defaults to [].
         """
 
         self.download_window.show()
@@ -459,7 +612,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     json.dump(new_vlauncher, file, indent = 4)
 
 
-        self.launch_thread.launch_setup_signal.emit(version, self.username, _type+1)
+        self.launch_thread.launch_setup_signal.emit(version, self.username, _type+1, self.config["Java"]["args"])
         self.launch_thread.start()
 
     def save_username(self):
@@ -510,10 +663,10 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.ui.comboBox_avalableTypes.currentIndex() == 0:
             self.launch_thread.launch_setup_signal.emit(mm.get_installed_versions()[self.ui.comboBox_avalableVersions.currentIndex()][0], \
                                                         self.username, \
-                                                        0)
+                                                        0, self.config["Java"]["args"])
             self.launch_thread.start()
         elif self.ui.comboBox_avalableTypes.currentIndex() == 1:
-            version = self.get_vlaunchers()[self.ui.comboBox_avalableVersions.currentIndex()]
+            version = get_vlaunchers()[self.ui.comboBox_avalableVersions.currentIndex()]
 
             if version['type'] == "fabric":
                 if version['version'][0].isdigit():
@@ -547,19 +700,25 @@ class MainWindow(QtWidgets.QMainWindow):
                 shutil.copyfile(LAUNCHER_DIRS["vlaunchers"]+version['name']+"/"+i, \
                                 LAUNCHER_DIRS["mc_mods"]+i.split("/")[-1])
 
-            self.launch_thread.launch_setup_signal.emit(version['version'], self.username, 0)
+            self.launch_thread.launch_setup_signal.emit(version['version'], self.username, 0, self.config["Java"]["args"])
             self.launch_thread.start()
 
     def onClick_check(self):
         """Callback when the user clicks the check (or edit) button
         """
 
-        self.download_window.show()
+        if self.ui.comboBox_avalableTypes.currentIndex() == 0:
+            self.download_window.show()
 
-        self.launch_thread.launch_setup_signal.emit(mm.get_installed_versions()\
-                                                    [self.ui.comboBox_avalableVersions.currentIndex()][0], \
-                                                    self.username, 1)
-        self.launch_thread.start()
+            self.launch_thread.launch_setup_signal.emit(mm.get_installed_versions()\
+                                                        [self.ui.comboBox_avalableVersions.currentIndex()][0], \
+                                                        self.username, 1, self.config["Java"]["args"])
+            self.launch_thread.start()
+        elif self.ui.comboBox_avalableTypes.currentIndex() == 1:
+            vlauncher_data = get_vlaunchers()[self.ui.comboBox_avalableVersions.currentIndex()]
+            
+            self.edit_window.setup_mod_ui(vlauncher_data, self.ui.comboBox_avalableVersions.currentIndex())
+            self.edit_window.show()
 
     def onClick_new(self):
         """Callback when the user clicks "Create new VLauncher" button
@@ -630,26 +789,11 @@ class MainWindow(QtWidgets.QMainWindow):
             for i in installed_versions:
                 self.ui.comboBox_avalableVersions.addItem(f"{i[0]}{(i[1] != 'release')*(' - '+i[1])}")
         elif self.ui.comboBox_avalableTypes.currentIndex() == 1:
-            installed_versions = self.get_vlaunchers()
+            installed_versions = get_vlaunchers()
             self.ui.comboBox_avalableVersions.clear()
 
             for i in installed_versions:
                 self.ui.comboBox_avalableVersions.addItem(f"{i['name']} - {i['type']}")
-
-    def get_vlaunchers(self):
-        """Get vaunchers from the file
-
-        Returns:
-            [list]: [check the vlauncher_data structure]
-        """
-
-        with open(LAUNCHER_DIRS["vlaunchers_data"], 'r') as file:
-            try:
-                file_data = json.load(file)
-
-                return file_data["vlaunchers"]
-            except json.decoder.JSONDecodeError:
-                return []
 
 
 if __name__ == "__main__":
