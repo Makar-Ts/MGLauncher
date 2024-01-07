@@ -18,14 +18,7 @@ from assets.animated_ui import CustomWidgetItem
 import minecraft_manager as mm
 import mc_mod_manager as mcmm
 
-print(sys.path)
-PATH_NUM = 0
 
-CSS_STYLESHEET = sys.path[PATH_NUM] + "/assets/main_style.css"
-INITAL_DIRS = {      # Если директории нет в папке mc то отсюда будут брать данные
-    "player_data":     sys.path[PATH_NUM] + "/inital/player_data.ini",
-    "vlaunchers_data": sys.path[PATH_NUM] + "/inital/vlaunchers_data.json"
-}
 LAUNCHER_DIRS = {
     "launcher":        mm.MC_DIR + "/.mglauncher/",
     "player_data":     mm.MC_DIR + "/.mglauncher/player_data.ini",
@@ -50,6 +43,34 @@ MODS_DATA_PATH = {      # расположение инфы о моде (име�
     "forge": "META-INF/mods.toml",
     "fabric": "fabric.mod.json"
 }
+
+print(sys.path)
+PATH_NUM = 2
+
+if os.path.exists(LAUNCHER_DIRS["player_data"]):
+    config = configparser.ConfigParser()
+    config.read(LAUNCHER_DIRS["player_data"])
+    
+    PATH_NUM = int(config["Player"]["PATH_NUM"])
+
+CSS_STYLESHEET = sys.path[PATH_NUM] + "/assets/main_style.css"
+INITAL_DIRS = {      # Если директории нет в папке mc то отсюда будут брать данные
+    "player_data":     sys.path[PATH_NUM] + "/inital/player_data.ini",
+    "vlaunchers_data": sys.path[PATH_NUM] + "/inital/vlaunchers_data.json"
+}
+
+while not os.path.exists(INITAL_DIRS["player_data"]):
+    print("!!!!!!!!!!!!!!!!! [ PATH ERROR ] !!!!!!!!!!!!!!!!!")
+    corrected_path_num = input("""Please enter the correct PATH identifier 
+(see the very first line, the path should be C:\\Users\\username\\AppData\\Local\\Temp\\MEI(some nums) and enter its sequence number).""")
+    
+    PATH_NUM = int(corrected_path_num)-1
+    
+    CSS_STYLESHEET = sys.path[PATH_NUM] + "/assets/main_style.css"
+    INITAL_DIRS = {      # Если директории нет в папке mc то отсюда будут брать данные
+        "player_data":     sys.path[PATH_NUM] + "/inital/player_data.ini",
+        "vlaunchers_data": sys.path[PATH_NUM] + "/inital/vlaunchers_data.json"
+    }
 
 def get_vlaunchers():
     """Get vaunchers from the file
@@ -562,6 +583,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.launch_thread = LaunchThread()
         self.launch_thread.progress_update_signal.connect(self.update_progress)
         self.launch_thread.run_complete_callback.connect(self.run_callback)
+        
+        if self.config["Player"]["PATH_NUM"] != PATH_NUM:
+            self.config["Player"]["PATH_NUM"] = str(PATH_NUM)
+            
+            with open(LAUNCHER_DIRS["player_data"], 'w') as configfile:    # save
+                self.config.write(configfile)
 
     def install(self, version:str, _type:int, name="", mods: list[mcmm.ModData]=[]):
         """install a new mc version (or vlauncher)
