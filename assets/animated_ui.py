@@ -38,11 +38,12 @@ class AnimatedComboBox(QComboBox):
     def borderLeftWidth(self, value):
         self.setStyleSheet(f"QComboBox {{ border-left: {value}px solid #444; }}")
 
-class CustomWidgetItem(QListWidgetItem):
+class CustomWidgetItem(QListWidgetItem, QWidget):
     def __init__(self, text):
         super(CustomWidgetItem, self).__init__()
 
         self.widget = QLabel(text)
+        self.widget.parentWidget = self
         self.widget.setAlignment(Qt.AlignmentFlag.AlignCenter)
     
     def enterEvent(self, QEvent):
