@@ -1,7 +1,7 @@
 # pylint: disable=line-too-long, invalid-name, import-error, multiple-imports, unspecified-encoding, broad-exception-caught, trailing-whitespace, no-name-in-module, unused-import
 
 from PyQt5.QtCore import QPropertyAnimation, QEasingCurve, pyqtProperty, pyqtSignal, Qt, QSize, QEvent
-from PyQt5.QtWidgets import QComboBox, QApplication, QStyle, QListWidget, QListWidgetItem, QLabel, QVBoxLayout, QWidget, QPushButton
+from PyQt5.QtWidgets import QComboBox, QApplication, QStyle, QListWidget, QListWidgetItem, QLabel, QVBoxLayout, QWidget, QPushButton, QDialog
 
 class AnimatedComboBox(QComboBox):
     def __init__(self, parent=None):
@@ -38,17 +38,42 @@ class AnimatedComboBox(QComboBox):
     def borderLeftWidth(self, value):
         self.setStyleSheet(f"QComboBox {{ border-left: {value}px solid #444; }}")
 
-class CustomWidgetItem(QListWidgetItem, QWidget):
-    def __init__(self, text):
-        super(CustomWidgetItem, self).__init__()
+class PopupWindow(QDialog):
+    def __init__(self):
+        super(PopupWindow, self).__init__()
+        
+    def setup(self, title, message):
+        self.setWindowTitle(title)
+        self.resize(200, 60)
 
-        self.widget = QLabel(text)
-        self.widget.parentWidget = self
-        self.widget.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # add a label with the message
+        self.label = QLabel(message, self)
+        self.label.move(20, 20)
+        self.label.setFixedSize(QSize(160, 40))
+        
+        self.resize(self.label.fontMetrics().boundingRect(self.label.text()).width()+40, 60)
+
+        # add a button to close the window
+        self.button = QPushButton('Ok', self)
+        self.button.move(120, 60)
+        self.button.clicked.connect(self.close)
+
+        # set layout
+        self.self_layout = QVBoxLayout()
+        self.self_layout.addWidget(self.label)
+        self.self_layout.addWidget(self.button)
+        self.setLayout(self.self_layout)
     
-    def enterEvent(self, QEvent):
-        print("Enter event")
-        self.setSizeHint(QSize(self.sizeHint().width(), self.sizeHint().height() + 50))
-
-    def leaveEvent(self, QEvent):
-        self.setSizeHint(self.widget.sizeHint())
+    def update(self, title, message):
+        self.setWindowTitle(title)
+        self.label.setText(message)
+        
+        size = self.label.fontMetrics().boundingRect(self.label.text()).width()
+        
+        self.label.setFixedSize(QSize(size, 40))
+        self.resize(size+40, 60)
+        
+        self.show()
+    
+    def close(self):
+        self.hide()

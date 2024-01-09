@@ -12,11 +12,12 @@ from mojang import Client
 from PyQt5 import QtWidgets
 from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtGui import QIcon
-from assets.main_ui import Ui_MainWindow
-from assets.download_menu_ui import Ui_DownloadWindow
-from assets.create_menu_ui import Ui_CreateWindow
-from assets.edit_menu_ui import Ui_EditWindow
-from assets.log_in_window_ui import Ui_LogInWindow
+from assets.ui.main_ui import Ui_MainWindow
+from assets.ui.download_menu_ui import Ui_DownloadWindow
+from assets.ui.create_menu_ui import Ui_CreateWindow
+from assets.ui.edit_menu_ui import Ui_EditWindow
+from assets.ui.log_in_window_ui import Ui_LogInWindow
+from assets.animated_ui import PopupWindow
 import minecraft_manager as mm
 import mc_mod_manager as mcmm
 
@@ -77,6 +78,9 @@ if not os.path.exists(INITAL_DIRS["player_data"]):
 ASSETS_DIRS = {
     "microsoft_icon": sys.path[PATH_NUM] + "/assets/microsoft.png"
 }
+
+
+POPUP_WINDOW = None
 
 def get_vlaunchers():
     """Get vaunchers from the file
@@ -205,6 +209,10 @@ class LaunchThread(QThread):
             except Exception as err:
                 print(f"Failed to install Minecraft version [ {self.version_id} ]\
                         because [ {err} ]")
+                
+                if POPUP_WINDOW: 
+                    POPUP_WINDOW.update("Error", f"Failed to install Minecraft version [ {self.version_id} ] because [ {err} ]")
+
 
                 self.run_complete_callback.emit(-2)
                 return -2
@@ -553,6 +561,8 @@ class LogInWindow(QtWidgets.QMainWindow):
             client = Client(login, password)
         except Exception as err:
             print(f"ERROR. Login failed. Error: {err}")
+            if POPUP_WINDOW: 
+                POPUP_WINDOW.update("Error", f"Login failed. Error: {err}")
             return
         
         profile = client.get_profile()
@@ -637,6 +647,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.create_window.setStyleSheet(css)
             self.edit_window.setStyleSheet(css)
             self.login_window.setStyleSheet(css)
+            if POPUP_WINDOW: 
+                POPUP_WINDOW.setStyleSheet(css)
 
         self.launch_thread = LaunchThread()
         self.launch_thread.progress_update_signal.connect(self.update_progress)
@@ -712,7 +724,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     json.dump(new_vlauncher, file, indent = 4)
 
 
-        self.launch_thread.launch_setup_signal.emit(version, self.username, _type+1, self.config["Java"]["args"])
+        self.launch_thread.launch_setup_signal.emit(version, self.username, self.config["Mojang"]["access_code"]*int(self.config["Mojang"]["have_licence"]), _type+1, self.config["Java"]["args"])
         self.launch_thread.start()
 
     def succesful_login(self, username:str):
@@ -753,6 +765,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
             self.download_window.hide()
             self.create_window.hide()
+            
+            if POPUP_WINDOW: 
+                POPUP_WINDOW.update("Complete", f"Version download complete")
+
         elif code == -2:
             self.download_window.hide()
             self.create_window.hide()
@@ -765,7 +781,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         if self.ui.comboBox_avalableTypes.currentIndex() == 0:
             self.launch_thread.launch_setup_signal.emit(mm.get_installed_versions()[self.ui.comboBox_avalableVersions.currentIndex()][0], \
-                                                        self.username, \
+                                                        self.username, self.config["Mojang"]["access_code"]*int(self.config["Mojang"]["have_licence"]), \
                                                         0, self.config["Java"]["args"])
             self.launch_thread.start()
         elif self.ui.comboBox_avalableTypes.currentIndex() == 1:
@@ -815,7 +831,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
             self.launch_thread.launch_setup_signal.emit(mm.get_installed_versions()\
                                                         [self.ui.comboBox_avalableVersions.currentIndex()][0], \
-                                                        self.username, 1, self.config["Java"]["args"])
+                                                        self.username, self.config["Mojang"]["access_code"]*int(self.config["Mojang"]["have_licence"]), \
+                                                        1, self.config["Java"]["args"])
             self.launch_thread.start()
         elif self.ui.comboBox_avalableTypes.currentIndex() == 1:
             vlauncher_data = get_vlaunchers()[self.ui.comboBox_avalableVersions.currentIndex()]
@@ -914,6 +931,10 @@ if __name__ == "__main__":
         os.mkdir(LAUNCHER_DIRS["mc_old_mods"])
 
     app = QtWidgets.QApplication([])
+    
+    POPUP_WINDOW = PopupWindow()
+    POPUP_WINDOW.setup("Test", f"Test")
+    
     application = MainWindow()
     application.show()
 
