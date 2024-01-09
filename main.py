@@ -3,18 +3,20 @@
 """Main script
 """
 
+import time
 import configparser
 import io, sys, os
-import shutil, zipfile, json
+import shutil, zipfile, json, tomli
 from tkinter import filedialog
-import tomli
+from mojang import Client
 from PyQt5 import QtWidgets
 from PyQt5.QtCore import QThread, pyqtSignal
+from PyQt5.QtGui import QIcon
 from assets.main_ui import Ui_MainWindow
 from assets.download_menu_ui import Ui_DownloadWindow
 from assets.create_menu_ui import Ui_CreateWindow
 from assets.edit_menu_ui import Ui_EditWindow
-from assets.animated_ui import CustomWidgetItem
+from assets.log_in_window_ui import Ui_LogInWindow
 import minecraft_manager as mm
 import mc_mod_manager as mcmm
 
@@ -59,18 +61,22 @@ INITAL_DIRS = {      # Если директории нет в папке mc т�
     "vlaunchers_data": sys.path[PATH_NUM] + "/inital/vlaunchers_data.json"
 }
 
-while not os.path.exists(INITAL_DIRS["player_data"]):
-    print("!!!!!!!!!!!!!!!!! [ PATH ERROR ] !!!!!!!!!!!!!!!!!")
-    corrected_path_num = input("""Please enter the correct PATH identifier 
-(see the very first line, the path should be C:\\Users\\username\\AppData\\Local\\Temp\\MEI(some nums) and enter its sequence number).""")
-    
-    PATH_NUM = int(corrected_path_num)-1
-    
-    CSS_STYLESHEET = sys.path[PATH_NUM] + "/assets/main_style.css"
-    INITAL_DIRS = {      # Если директории нет в папке mc то отсюда будут брать данные
-        "player_data":     sys.path[PATH_NUM] + "/inital/player_data.ini",
-        "vlaunchers_data": sys.path[PATH_NUM] + "/inital/vlaunchers_data.json"
-    }
+if not os.path.exists(INITAL_DIRS["player_data"]):
+    PATH_NUM = -1
+    while not os.path.exists(INITAL_DIRS["player_data"]):
+        PATH_NUM += 1
+        
+        print(f"PATH ERROR. RECALCULATING. PATH_NUM: {PATH_NUM}")
+        
+        CSS_STYLESHEET = sys.path[PATH_NUM] + "/assets/main_style.css"
+        INITAL_DIRS = {      # Если директории нет в папке mc то отсюда будут брать данные
+            "player_data":     sys.path[PATH_NUM] + "/inital/player_data.ini",
+            "vlaunchers_data": sys.path[PATH_NUM] + "/inital/vlaunchers_data.json"
+        }
+
+ASSETS_DIRS = {
+    "microsoft_icon": sys.path[PATH_NUM] + "/assets/microsoft.png"
+}
 
 def get_vlaunchers():
     """Get vaunchers from the file
@@ -100,7 +106,7 @@ class LaunchThread(QThread):
     """Creating separate stream for downloading and running mc.
     """
 
-    launch_setup_signal = pyqtSignal(str, str, int, str)
+    launch_setup_signal = pyqtSignal(str, str, str, int, str)
     progress_update_signal = pyqtSignal(int, int, str)
     run_complete_callback = pyqtSignal(int) # exit code
 
@@ -117,7 +123,7 @@ class LaunchThread(QThread):
         super().__init__()
         self.launch_setup_signal.connect(self.launch_setup)
 
-    def launch_setup(self, version_id:str, username:str, _type:int, args:str):
+    def launch_setup(self, version_id:str, username:str, access_code:str, _type:int, args:str):
         """Setup the thread.
 
         Args:
@@ -132,6 +138,7 @@ class LaunchThread(QThread):
 
         self.version_id = version_id
         self.username = username
+        self.access_code = access_code
         self.run_type = _type
         self.jvm_args = args
 
@@ -202,7 +209,7 @@ class LaunchThread(QThread):
                 self.run_complete_callback.emit(-2)
                 return -2
         elif self.run_type == 0:
-            mlauncher = mm.MinecraftVersionLauncher(self.username, self.version_id)
+            mlauncher = mm.MinecraftVersionLauncher(self.username, self.version_id, access_token=self.access_code)
 
             mlauncher.start_minecraft_version([self.jvm_args])
 
@@ -523,6 +530,49 @@ class CreateWindow(QtWidgets.QMainWindow):
         self.ui.comboBox_avalableVersions.setCurrentIndex(0)
         self.ui.line_launcherName.setText("")
 
+class LogInWindow(QtWidgets.QMainWindow):
+    succesfull_login = pyqtSignal(str)
+    
+    def __init__(self):
+        super(LogInWindow, self).__init__()
+        self.ui = Ui_LogInWindow()
+        self.ui.setupUi(self)
+        
+        self.setWindowTitle("Log In")
+        
+        self.ui.button_login.clicked.connect(self.onClick_login)
+        self.ui.button_cancel.clicked.connect(self.onClick_cancel)
+    
+    def onClick_login(self):
+        login = self.ui.line_login.text().replace(" ", "")
+        password = self.ui.line_password.text().replace(" ", "")
+        
+        if (login == "" or password == ""): return
+        
+        try:
+            client = Client(login, password)
+        except Exception as err:
+            print(f"ERROR. Login failed. Error: {err}")
+            return
+        
+        profile = client.get_profile()
+        
+        
+        config = configparser.ConfigParser()
+        config.read(LAUNCHER_DIRS["player_data"])
+        
+        config["Player"]["username"] = profile.name
+        config["Mojang"]["have_licence"] = str(1)
+        config["Mojang"]["access_code"] = str(client.bearer_token)
+
+        with open(LAUNCHER_DIRS["player_data"], 'w') as configfile:    # save
+            self.config.write(configfile)
+        
+        self.succesfull_login.emit(profile.name)
+    
+    def onClick_cancel(self):
+        self.hide()
+
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -545,6 +595,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ui.button_check.setText("Check")
         self.ui.button_createNew.clicked.connect(self.onClick_new)
         self.ui.button_delete.clicked.connect(self.onClick_delete)
+        self.ui.button_microsoftAccount.setIcon(QIcon(ASSETS_DIRS["microsoft_icon"]))
+        
 
         installed_versions = mm.get_installed_versions()
 
@@ -571,6 +623,11 @@ class MainWindow(QtWidgets.QMainWindow):
         
         self.edit_window = EditWindow()
         self.edit_window.setWindowTitle("Edit")
+        
+        self.login_window = LogInWindow()
+        self.login_window.setWindowTitle("Log In")
+        self.login_window.succesfull_login.connect(self.succesful_login)
+        self.ui.button_microsoftAccount.clicked.connect(self.login_window.show)
 
         with open(CSS_STYLESHEET, "r") as f:
             css = f.read()
@@ -579,16 +636,32 @@ class MainWindow(QtWidgets.QMainWindow):
             self.download_window.setStyleSheet(css)
             self.create_window.setStyleSheet(css)
             self.edit_window.setStyleSheet(css)
+            self.login_window.setStyleSheet(css)
 
         self.launch_thread = LaunchThread()
         self.launch_thread.progress_update_signal.connect(self.update_progress)
         self.launch_thread.run_complete_callback.connect(self.run_callback)
         
+        if self.config["Mojang"]["have_licence"] == "1":
+            client = Client(bearer_token="BEARER_TOKEN_HERE")
+            
+            profile = client.get_profile()
+            
+            self.config["Player"]["username"] = profile.name
+            self.config["Mojang"]["have_licence"] = str(1)
+            self.config["Mojang"]["access_code"] = str(client.bearer_token)
+        
         if self.config["Player"]["PATH_NUM"] != PATH_NUM:
             self.config["Player"]["PATH_NUM"] = str(PATH_NUM)
             
-            with open(LAUNCHER_DIRS["player_data"], 'w') as configfile:    # save
-                self.config.write(configfile)
+        with open(LAUNCHER_DIRS["player_data"], 'w') as configfile:    # save
+            self.config.write(configfile)
+        
+        self.config = configparser.ConfigParser()
+        self.config.read(LAUNCHER_DIRS["player_data"])
+        self.username = self.config["Player"]["username"]
+        
+        self.ui.lineEdit.setText(self.username)
 
     def install(self, version:str, _type:int, name="", mods: list[mcmm.ModData]=[]):
         """install a new mc version (or vlauncher)
@@ -642,15 +715,18 @@ class MainWindow(QtWidgets.QMainWindow):
         self.launch_thread.launch_setup_signal.emit(version, self.username, _type+1, self.config["Java"]["args"])
         self.launch_thread.start()
 
+    def succesful_login(self, username:str):
+        self.config = configparser.ConfigParser()
+        self.config.read(LAUNCHER_DIRS["player_data"])
+        self.username = username
+
+        self.ui.lineEdit.setText(self.username)
+    
     def save_username(self):
         """Save username to config file .
         """
 
         self.username = self.ui.lineEdit.text()
-        self.config["Player"]["username"] = self.ui.lineEdit.text()
-
-        with open(LAUNCHER_DIRS["player_data"], 'w') as configfile:    # save
-            self.config.write(configfile)
 
     def run_callback(self, code:int):
         """Callback when run function in LaunchThread ended.
@@ -727,7 +803,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 shutil.copyfile(LAUNCHER_DIRS["vlaunchers"]+version['name']+"/"+i, \
                                 LAUNCHER_DIRS["mc_mods"]+i.split("/")[-1])
 
-            self.launch_thread.launch_setup_signal.emit(version['version'], self.username, 0, self.config["Java"]["args"])
+            self.launch_thread.launch_setup_signal.emit(version['version'], self.username, self.config["Mojang"]["access_code"]*int(self.config["Mojang"]["have_licence"]), 0, self.config["Java"]["args"])
             self.launch_thread.start()
 
     def onClick_check(self):
@@ -841,4 +917,9 @@ if __name__ == "__main__":
     application = MainWindow()
     application.show()
 
-    sys.exit(app.exec())
+    try:
+        sys.exit(app.exec())
+    except Exception as e:
+        print("CRITICAL ERROR: " + str(e))
+        print("--This window will be closed in 200 seconds--")
+        time.sleep(200)
