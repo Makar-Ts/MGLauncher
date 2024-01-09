@@ -96,7 +96,7 @@ def get_mod_data(path:str) -> ModData|None:
                                 "fabric", \
                                 non_structured_data.get(MODS_DATA_STRUCT['fabric']['version'], "1.0"), \
                                 non_structured_data.get(MODS_DATA_STRUCT['fabric']['name'], "name"), \
-                                non_structured_data.get(MODS_DATA_STRUCT['fabric']['url'], {"homepage":"no url :("})["homepage"], \
+                                non_structured_data.get(MODS_DATA_STRUCT['fabric']['url'], {"homepage":"no url :("}).get("homepage", "no url :("), \
                                 ", ".join(authors), \
                                 non_structured_data.get(MODS_DATA_STRUCT['fabric']['description'], ""))
             

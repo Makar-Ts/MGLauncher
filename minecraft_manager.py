@@ -63,11 +63,12 @@ class MinecraftVersionLauncher:
     """Class method that creates a new Minecraft versionLauncher .
     """
     
-    def __init__(self, username: str, version: str, _type="vanilla", access_token=""):
+    def __init__(self, username: str, version: str, _type="vanilla", access_token="", uuid=""):
         self.username = username
         self.version = version
         self.type = _type
         self.access_token = access_token
+        self.uuid = uuid
         
         self.download_progress = {
             'status': "not started",
@@ -151,7 +152,7 @@ class MinecraftVersionLauncher:
         
         options = {
             'username': self.username,
-            'uuid': str(uuid1()),
+            'uuid': (self.uuid == "")*str(uuid1())+self.uuid,
             'token': self.access_token,                # оставлять пустым (при пиратке)
             "jvmArguments": jvm_args
         }

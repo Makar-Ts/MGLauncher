@@ -5,6 +5,7 @@
 
 import time
 import configparser
+import configs_manager
 import io, sys, os
 import shutil, zipfile, json, tomli
 from tkinter import filedialog
@@ -12,15 +13,19 @@ from mojang import Client
 from PyQt5 import QtWidgets
 from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtGui import QIcon
-from assets.ui.main_ui import Ui_MainWindow
+from assets.ui.main_ui import          Ui_MainWindow
 from assets.ui.download_menu_ui import Ui_DownloadWindow
-from assets.ui.create_menu_ui import Ui_CreateWindow
-from assets.ui.edit_menu_ui import Ui_EditWindow
+from assets.ui.create_menu_ui import   Ui_CreateWindow
+from assets.ui.edit_menu_ui import     Ui_EditWindow
 from assets.ui.log_in_window_ui import Ui_LogInWindow
 from assets.animated_ui import PopupWindow
 import minecraft_manager as mm
 import mc_mod_manager as mcmm
 
+
+#=========================================================            =========================================================
+#========================================================= Constants  =========================================================
+#=========================================================            =========================================================
 
 LAUNCHER_DIRS = {
     "launcher":        mm.MC_DIR + "/.mglauncher/",
@@ -32,20 +37,15 @@ LAUNCHER_DIRS = {
     "mc_versions":     mm.MC_DIR + "/versions/"
 }
 
-""" vlaunchers_data.json structure
-
-"name" {
-    "name" : "vlauncher name",       # имя в папке vlaunchers
-    "version": "version to start",   # если при fabric обычная версия, то парсит список установленных
-    "type: "forge/fabric"            
-}
-
-"""
-
 MODS_DATA_PATH = {      # расположение инфы о моде (имени) внутри .jar файла
     "forge": "META-INF/mods.toml",
     "fabric": "fabric.mod.json"
 }
+
+
+#=========================================================               =========================================================
+#========================================================= PATH CHECKING =========================================================
+#=========================================================               =========================================================
 
 print(sys.path)
 PATH_NUM = 2
@@ -56,15 +56,18 @@ if os.path.exists(LAUNCHER_DIRS["player_data"]):
     
     PATH_NUM = int(config["Player"]["PATH_NUM"])
 
+
 CSS_STYLESHEET = sys.path[PATH_NUM] + "/assets/main_style.css"
+
 INITAL_DIRS = {      # Если директории нет в папке mc то отсюда будут брать данные
     "player_data":     sys.path[PATH_NUM] + "/inital/player_data.ini",
     "vlaunchers_data": sys.path[PATH_NUM] + "/inital/vlaunchers_data.json"
 }
 
+
 if not os.path.exists(INITAL_DIRS["player_data"]):
     PATH_NUM = -1
-    while not os.path.exists(INITAL_DIRS["player_data"]):
+    while not os.path.exists(INITAL_DIRS["player_data"]): # перебираем PATH индефикаторы пока не найдем нужный
         PATH_NUM += 1
         
         print(f"PATH ERROR. RECALCULATING. PATH_NUM: {PATH_NUM}")
@@ -75,44 +78,40 @@ if not os.path.exists(INITAL_DIRS["player_data"]):
             "vlaunchers_data": sys.path[PATH_NUM] + "/inital/vlaunchers_data.json"
         }
 
+
 ASSETS_DIRS = {
     "microsoft_icon": sys.path[PATH_NUM] + "/assets/microsoft.png"
 }
 
 
-POPUP_WINDOW = None
+POPUP_WINDOW = None # Позже (в main) приравняется к PopupWindow() это просто заполнитель
 
-def get_vlaunchers():
-    """Get vaunchers from the file
+CONFIG_MANAGER = configs_manager.ConfigManager(player=LAUNCHER_DIRS["player_data"], \
+                                               vlaunchers=LAUNCHER_DIRS["vlaunchers_data"])
 
-    Returns:
-        [list]: [check the vlauncher_data structure]
-    """
-
-    with open(LAUNCHER_DIRS["vlaunchers_data"], 'r') as file:
-        try:
-            file_data = json.load(file)
-
-            return file_data["vlaunchers"]
-        except json.decoder.JSONDecodeError:
-            return []
-
-class SelectedMod:
-    """Store information about selected mod.
-    """
-
-    def __init__(self, path, name):
-        self.path = path
-        self.name = name
+#=========================================================           =========================================================
+#========================================================= Functions =========================================================
+#=========================================================           =========================================================
 
 
-class LaunchThread(QThread):
+
+#=========================================================              =========================================================
+#========================================================= Data Classes =========================================================
+#=========================================================              =========================================================
+
+# пока что ничего
+
+#=========================================================              =========================================================
+#========================================================= LaunchThread =========================================================
+#=========================================================              =========================================================
+
+class LaunchThread(QThread): # работа с minecraft_manager в отдельном потоке, что бы не стопить взаимодействие с интерфейсом
     """Creating separate stream for downloading and running mc.
     """
 
-    launch_setup_signal = pyqtSignal(str, str, str, int, str)
-    progress_update_signal = pyqtSignal(int, int, str)
-    run_complete_callback = pyqtSignal(int) # exit code
+    launch_setup_signal = pyqtSignal(str, str, str, str, int, str) # см. launch_setup функцию
+    progress_update_signal = pyqtSignal(int, int, str)        # progress, progress_max, progress_label
+    run_complete_callback = pyqtSignal(int)                   # exit code
 
     version_id = ''
     username = ''
@@ -127,7 +126,7 @@ class LaunchThread(QThread):
         super().__init__()
         self.launch_setup_signal.connect(self.launch_setup)
 
-    def launch_setup(self, version_id:str, username:str, access_code:str, _type:int, args:str):
+    def launch_setup(self, version_id:str, username:str, access_code:str, uuid:str, _type:int, args:str):
         """Setup the thread.
 
         Args:
@@ -143,6 +142,7 @@ class LaunchThread(QThread):
         self.version_id = version_id
         self.username = username
         self.access_code = access_code
+        self.uuid = uuid
         self.run_type = _type
         self.jvm_args = args
 
@@ -217,14 +217,19 @@ class LaunchThread(QThread):
                 self.run_complete_callback.emit(-2)
                 return -2
         elif self.run_type == 0:
-            mlauncher = mm.MinecraftVersionLauncher(self.username, self.version_id, access_token=self.access_code)
+            mlauncher = mm.MinecraftVersionLauncher(self.username, self.version_id, access_token=self.access_code, uuid=self.uuid)
 
             mlauncher.start_minecraft_version([self.jvm_args])
 
             self.run_complete_callback.emit(0)
 
 
-#===============================Windows============================
+#========================================================= Windows Classes ==================================================
+
+
+#=========================================================                =========================================================
+#========================================================= DownloadWindow =========================================================
+#=========================================================                =========================================================
 
 class DownloadWindow(QtWidgets.QMainWindow):
     """Class for download progress bar
@@ -267,6 +272,11 @@ class DownloadWindow(QtWidgets.QMainWindow):
 
         self.current_max = new_max
 
+
+#=========================================================            =========================================================
+#========================================================= EditWindow =========================================================
+#=========================================================            =========================================================
+
 class EditWindow(QtWidgets.QMainWindow):
     """Window for editing already existing vlaunchers.
     """    
@@ -305,19 +315,13 @@ class EditWindow(QtWidgets.QMainWindow):
         if vlauncher_data['type'] == "fabric" and vlauncher_data['version'][0].isdigit():
             for i in installed_versions:
                 if vlauncher_data['version'] in i[0] and "fabric-loader-" in i[0]:
-                    with open(LAUNCHER_DIRS["vlaunchers_data"], 'r+') as file:
-                        file_data = json.load(file)
-
-                        file_data["vlaunchers"]\
-                            [self.ui.comboBox_avalableVersions.currentIndex()]["version"] = i[0]
-
-                        file.seek(0)
-                        json.dump(file_data, file, indent = 4)
-
-                        vlauncher_data['version'] = i[0]
-                        self.current_vlauncher_data['version'] = i[0]
-
-                        break
+                    CONFIG_MANAGER.update_config_data(f"vlaunchers.vlaunchers.{i[0]}.version", \
+                                                               i[0], update_save=True)
+                    
+                    vlauncher_data['version'] = i[0]
+                    self.current_vlauncher_data['version'] = i[0]
+                    
+                    break
         
         current_ver_index = -1
         for index, i in enumerate(installed_versions):
@@ -395,18 +399,16 @@ class EditWindow(QtWidgets.QMainWindow):
         """Save the current version of the vlauncher to the file and closes the window.
         """        
         
-        if self.ui.comboBox_avalableVersions.currentData() != self.current_vlauncher_data['version']:
-            with open(LAUNCHER_DIRS["vlaunchers_data"], 'r+') as file:
-                file_data = json.load(file)
-
-                file_data["vlaunchers"]\
-                    [self.current_vlauncher_index]["version"] = self.ui.comboBox_avalableVersions.currentText()
-
-                file.seek(0)
-                json.dump(file_data, file, indent = 4)
+        if self.ui.comboBox_avalableVersions.currentText() != self.current_vlauncher_data['version']:
+            CONFIG_MANAGER.update_config_data(f"vlaunchers.vlaunchers.{self.current_vlauncher_index}.version", \
+                                                               self.ui.comboBox_avalableVersions.currentText(), update_save=True)
                 
         self.hide()
-        
+
+
+#=========================================================              =========================================================
+#========================================================= CreateWindow =========================================================
+#=========================================================              =========================================================
 
 class CreateWindow(QtWidgets.QMainWindow):
     """Class for create_window where creating new VLaunchers.
@@ -538,6 +540,11 @@ class CreateWindow(QtWidgets.QMainWindow):
         self.ui.comboBox_avalableVersions.setCurrentIndex(0)
         self.ui.line_launcherName.setText("")
 
+
+#=========================================================             =========================================================
+#========================================================= LogInWindow =========================================================
+#=========================================================             =========================================================
+
 class LogInWindow(QtWidgets.QMainWindow):
     succesfull_login = pyqtSignal(str)
     
@@ -567,16 +574,10 @@ class LogInWindow(QtWidgets.QMainWindow):
         
         profile = client.get_profile()
         
-        
-        config = configparser.ConfigParser()
-        config.read(LAUNCHER_DIRS["player_data"])
-        
-        config["Player"]["username"] = profile.name
-        config["Mojang"]["have_licence"] = str(1)
-        config["Mojang"]["access_code"] = str(client.bearer_token)
-
-        with open(LAUNCHER_DIRS["player_data"], 'w') as configfile:    # save
-            self.config.write(configfile)
+        CONFIG_MANAGER.update_config_data("player.Player.username", profile.name)
+        CONFIG_MANAGER.update_config_data("player.Mojang.have_licence", str(1))
+        CONFIG_MANAGER.update_config_data("player.Mojang.access_code", str(client.bearer_token))
+        CONFIG_MANAGER.update_config_data("player.Mojang.uuid", str(profile.id), update_save=True)
         
         self.succesfull_login.emit(profile.name)
     
@@ -584,6 +585,9 @@ class LogInWindow(QtWidgets.QMainWindow):
         self.hide()
 
 
+#=========================================================            =========================================================
+#========================================================= MainWindow =========================================================
+#=========================================================            =========================================================
 
 class MainWindow(QtWidgets.QMainWindow):
     """Class what controls main window and operates all.
@@ -617,9 +621,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ui.comboBox_avalableTypes.addItem("VLaunchers")
         self.ui.comboBox_avalableTypes.currentTextChanged.connect(self.onChanged_type)
 
-        self.config = configparser.ConfigParser()
-        self.config.read(LAUNCHER_DIRS["player_data"])
-        self.username = self.config["Player"]["username"]
+        self.username = str(CONFIG_MANAGER.get_config("player.Player.username"))
 
         self.ui.lineEdit.setText(self.username)
         self.ui.lineEdit.editingFinished.connect(self.save_username)
@@ -654,24 +656,19 @@ class MainWindow(QtWidgets.QMainWindow):
         self.launch_thread.progress_update_signal.connect(self.update_progress)
         self.launch_thread.run_complete_callback.connect(self.run_callback)
         
-        if self.config["Mojang"]["have_licence"] == "1":
+        if CONFIG_MANAGER.get_config("player.Mojang.have_licence") == "1":
             client = Client(bearer_token="BEARER_TOKEN_HERE")
             
             profile = client.get_profile()
             
-            self.config["Player"]["username"] = profile.name
-            self.config["Mojang"]["have_licence"] = str(1)
-            self.config["Mojang"]["access_code"] = str(client.bearer_token)
-        
-        if self.config["Player"]["PATH_NUM"] != PATH_NUM:
-            self.config["Player"]["PATH_NUM"] = str(PATH_NUM)
-            
-        with open(LAUNCHER_DIRS["player_data"], 'w') as configfile:    # save
-            self.config.write(configfile)
-        
-        self.config = configparser.ConfigParser()
-        self.config.read(LAUNCHER_DIRS["player_data"])
-        self.username = self.config["Player"]["username"]
+            CONFIG_MANAGER.update_config_data("player.Player.username", profile.name)
+            CONFIG_MANAGER.update_config_data("player.Mojang.have_licence", str(1))
+            CONFIG_MANAGER.update_config_data("player.Mojang.access_code", str(client.bearer_token), update_save=True)
+
+        if int(CONFIG_MANAGER.get_config("player.Player.path_num")) != PATH_NUM: # type: ignore
+            CONFIG_MANAGER.update_config_data("player.Player.path_num", str(PATH_NUM))
+
+        self.username = str(CONFIG_MANAGER.get_config("player.Player.username"))
         
         self.ui.lineEdit.setText(self.username)
 
@@ -711,25 +708,14 @@ class MainWindow(QtWidgets.QMainWindow):
 
                 shutil.copyfile(i.path, LAUNCHER_DIRS["vlaunchers"]+name+"/"+mod_name)
 
-            try:
-                with open(LAUNCHER_DIRS["vlaunchers_data"], 'r+') as file:
-                    file_data = json.load(file)
+            CONFIG_MANAGER.update_config_data("vlaunchers.vlaunchers", new_vlauncher, write_type="append.list")
 
-                    file_data["vlaunchers"].append(new_vlauncher)
-
-                    file.seek(0)
-                    json.dump(file_data, file, indent = 4)
-            except json.decoder.JSONDecodeError:
-                with open(LAUNCHER_DIRS["vlaunchers_data"], 'w') as file:
-                    json.dump(new_vlauncher, file, indent = 4)
-
-
-        self.launch_thread.launch_setup_signal.emit(version, self.username, self.config["Mojang"]["access_code"]*int(self.config["Mojang"]["have_licence"]), _type+1, self.config["Java"]["args"])
+        self.launch_thread.launch_setup_signal.emit(version, self.username, "", "", _type+1, CONFIG_MANAGER.get_config("player.Java.args"))
         self.launch_thread.start()
 
     def succesful_login(self, username:str):
-        self.config = configparser.ConfigParser()
-        self.config.read(LAUNCHER_DIRS["player_data"])
+        CONFIG_MANAGER.update_configs()
+        
         self.username = username
 
         self.ui.lineEdit.setText(self.username)
@@ -737,6 +723,8 @@ class MainWindow(QtWidgets.QMainWindow):
     def save_username(self):
         """Save username to config file .
         """
+        
+        CONFIG_MANAGER.update_config_data("player.Player.username", self.ui.lineEdit.text())
 
         self.username = self.ui.lineEdit.text()
 
@@ -778,33 +766,30 @@ class MainWindow(QtWidgets.QMainWindow):
         """
 
         self.hide()
+        
+        code = ""
+        if int(CONFIG_MANAGER.get_config("player.Mojang.have_licence")) == 1: # type: ignore
+            code = CONFIG_MANAGER.get_config("player.Mojang.access_code")
 
         if self.ui.comboBox_avalableTypes.currentIndex() == 0:
             self.launch_thread.launch_setup_signal.emit(mm.get_installed_versions()[self.ui.comboBox_avalableVersions.currentIndex()][0], \
-                                                        self.username, self.config["Mojang"]["access_code"]*int(self.config["Mojang"]["have_licence"]), \
-                                                        0, self.config["Java"]["args"])
+                                                        self.username, code, CONFIG_MANAGER.get_config("player.Mojang.uuid"), \
+                                                        0, CONFIG_MANAGER.get_config("player.Java.args"))
             self.launch_thread.start()
         elif self.ui.comboBox_avalableTypes.currentIndex() == 1:
-            version = get_vlaunchers()[self.ui.comboBox_avalableVersions.currentIndex()]
+            version = CONFIG_MANAGER.get_config("vlaunchers.vlaunchers")[self.ui.comboBox_avalableVersions.currentIndex()] # type: ignore
 
+            if not isinstance(version, dict): 
+                return
+            
             if version['type'] == "fabric":
                 if version['version'][0].isdigit():
                     ver_to_parse = mm.get_installed_versions()
 
                     for i in ver_to_parse:
                         if version['version'] in i[0] and "fabric-loader-" in i[0]:
-                            with open(LAUNCHER_DIRS["vlaunchers_data"], 'r+') as file:
-                                file_data = json.load(file)
-
-                                file_data["vlaunchers"]\
-                                    [self.ui.comboBox_avalableVersions.currentIndex()]["version"] = i[0]
-
-                                file.seek(0)
-                                json.dump(file_data, file, indent = 4)
-
-                                version['version'] = i[0]
-
-                                break
+                            CONFIG_MANAGER.update_config_data(f"vlaunchers.vlaunchers.{self.ui.comboBox_avalableVersions.currentIndex()}.version", \
+                                                               i[0], update_save=True)
 
             old_mods = os.listdir(LAUNCHER_DIRS["mc_mods"])
 
@@ -819,7 +804,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 shutil.copyfile(LAUNCHER_DIRS["vlaunchers"]+version['name']+"/"+i, \
                                 LAUNCHER_DIRS["mc_mods"]+i.split("/")[-1])
 
-            self.launch_thread.launch_setup_signal.emit(version['version'], self.username, self.config["Mojang"]["access_code"]*int(self.config["Mojang"]["have_licence"]), 0, self.config["Java"]["args"])
+            self.launch_thread.launch_setup_signal.emit(version['version'], self.username, code, CONFIG_MANAGER.get_config("player.Mojang.uuid"), 0, CONFIG_MANAGER.get_config("player.Java.args"))
             self.launch_thread.start()
 
     def onClick_check(self):
@@ -831,11 +816,14 @@ class MainWindow(QtWidgets.QMainWindow):
 
             self.launch_thread.launch_setup_signal.emit(mm.get_installed_versions()\
                                                         [self.ui.comboBox_avalableVersions.currentIndex()][0], \
-                                                        self.username, self.config["Mojang"]["access_code"]*int(self.config["Mojang"]["have_licence"]), \
-                                                        1, self.config["Java"]["args"])
+                                                        self.username, "", "", \
+                                                        1, CONFIG_MANAGER.get_config("player.Java.args"))
             self.launch_thread.start()
         elif self.ui.comboBox_avalableTypes.currentIndex() == 1:
-            vlauncher_data = get_vlaunchers()[self.ui.comboBox_avalableVersions.currentIndex()]
+            vlauncher_data = CONFIG_MANAGER.get_config("vlaunchers.vlaunchers")[self.ui.comboBox_avalableVersions.currentIndex()] # type: ignore
+
+            if not isinstance(vlauncher_data, dict): 
+                return
             
             self.edit_window.setup_mod_ui(vlauncher_data, self.ui.comboBox_avalableVersions.currentIndex())
             self.edit_window.show()
@@ -909,7 +897,11 @@ class MainWindow(QtWidgets.QMainWindow):
             for i in installed_versions:
                 self.ui.comboBox_avalableVersions.addItem(f"{i[0]}{(i[1] != 'release')*(' - '+i[1])}")
         elif self.ui.comboBox_avalableTypes.currentIndex() == 1:
-            installed_versions = get_vlaunchers()
+            installed_versions = CONFIG_MANAGER.get_config("vlaunchers.vlaunchers") # type: ignore
+
+            if not isinstance(installed_versions, list): 
+                return
+            
             self.ui.comboBox_avalableVersions.clear()
 
             for i in installed_versions:
