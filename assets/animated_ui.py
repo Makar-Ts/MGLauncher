@@ -50,6 +50,7 @@ class PopupWindow(QDialog):
         self.label = QLabel(message, self)
         self.label.move(20, 20)
         self.label.setFixedSize(QSize(160, 40))
+        self.label.setWordWrap(True)
         
         self.resize(self.label.fontMetrics().boundingRect(self.label.text()).width()+40, 60)
 

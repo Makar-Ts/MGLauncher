@@ -5,14 +5,17 @@
 
 import time
 import configparser
-import configs_manager
+import base64
 import io, sys, os
 import shutil, zipfile, json, tomli
+from turtle import update
 from tkinter import filedialog
 from mojang import Client
 from PyQt5 import QtWidgets
 from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtGui import QIcon
+from Crypto.Cipher import AES
+import configs_manager
 from assets.ui.main_ui import          Ui_MainWindow
 from assets.ui.download_menu_ui import Ui_DownloadWindow
 from assets.ui.create_menu_ui import   Ui_CreateWindow
@@ -26,6 +29,8 @@ import mc_mod_manager as mcmm
 #=========================================================            =========================================================
 #========================================================= Constants  =========================================================
 #=========================================================            =========================================================
+
+SECRET_CRYPTO_KEY = b'Z\xc9\xd0\x16\xaf\x01\x85\x0e\xff\x9f\xd7\x96$\x0b\xe6\xcb\xfco\xe2\x85\xc5\xebUC\xb1E\xc72L\xa3\rJ'
 
 LAUNCHER_DIRS = {
     "launcher":        mm.MC_DIR + "/.mglauncher/",
@@ -54,7 +59,10 @@ if os.path.exists(LAUNCHER_DIRS["player_data"]):
     config = configparser.ConfigParser()
     config.read(LAUNCHER_DIRS["player_data"])
     
-    PATH_NUM = int(config["Player"]["PATH_NUM"])
+    try: 
+        PATH_NUM = int(config["Player"]["PATH_NUM"])
+    except KeyError:
+        PATH_NUM = 0
 
 
 CSS_STYLESHEET = sys.path[PATH_NUM] + "/assets/main_style.css"
@@ -86,14 +94,70 @@ ASSETS_DIRS = {
 
 POPUP_WINDOW = None # Позже (в main) приравняется к PopupWindow() это просто заполнитель
 
-CONFIG_MANAGER = configs_manager.ConfigManager(player=LAUNCHER_DIRS["player_data"], \
-                                               vlaunchers=LAUNCHER_DIRS["vlaunchers_data"])
+
+#=========================================================               =========================================================
+#========================================================= CONFIGS SETUP =========================================================
+#=========================================================               =========================================================
+
+player_data = configs_manager.Config(LAUNCHER_DIRS["player_data"], {
+                                            "Player":              "__dir__",
+                                            "Player.username":     "player",
+                                            "Player.path_num":     2,
+                                            "Mojang":              "__dir__",
+                                            "Mojang.have_licence": 0,
+                                            "Mojang.access_code":  "",
+                                            "Mojang.uuid":         "",
+                                            "Mojang.crypto_vi":    "",
+                                            "Java":                "__dir__",
+                                            "Java.args":           ""
+                                        })
+vlaunchers_data = configs_manager.Config(LAUNCHER_DIRS["vlaunchers_data"], {
+                                            "vlaunchers":          "__dir__"
+                                        })
+
+CONFIG_MANAGER = configs_manager.ConfigManager(player=player_data, \
+                                               vlaunchers=vlaunchers_data)
 
 #=========================================================           =========================================================
 #========================================================= Functions =========================================================
 #=========================================================           =========================================================
 
+def encode_str(secret_key, iv_base64, text) -> str:
+    """Encrypt a string using the secret key and IV.
 
+    Args:
+        secret_key (bytes): [secret encrypt key]
+        iv_base64 (str): [base64 encrypt vector]
+        text ([type]): [description]
+
+    Returns:
+        str: [encrypted data]
+    """    
+    
+    obj = AES.new(secret_key, AES.MODE_CFB, base64.b64decode(iv_base64))
+    
+    encrypted_text = obj.encrypt(text.encode("utf8"))
+    
+    return base64.b64encode(encrypted_text).decode("utf-8")
+
+def decode_str(secret_key, iv_base64, text_base64) -> str:
+    """Decrypt a string using the secret key and IV.
+
+    Args:
+        secret_key (bytes): [secret encrypt key]
+        iv_base64 (str): [base64 encrypt vector]
+        text_base64 (str): [base64 encrypted data]
+
+    Returns:
+        str: [decrypted data]
+    """    
+    
+    obj = AES.new(secret_key, AES.MODE_CFB, base64.b64decode(iv_base64))
+    
+    decrypted_text = obj.decrypt(base64.b64decode(text_base64))
+    
+    return decrypted_text.decode("utf-8")
+    
 
 #=========================================================              =========================================================
 #========================================================= Data Classes =========================================================
@@ -546,6 +610,9 @@ class CreateWindow(QtWidgets.QMainWindow):
 #=========================================================             =========================================================
 
 class LogInWindow(QtWidgets.QMainWindow):
+    """Class for microsoft login window.
+    """    
+    
     succesfull_login = pyqtSignal(str)
     
     def __init__(self):
@@ -565,6 +632,8 @@ class LogInWindow(QtWidgets.QMainWindow):
         if (login == "" or password == ""): return
         
         try:
+            print("====================== Connecting to Mojang servers ======================")
+            
             client = Client(login, password)
         except Exception as err:
             print(f"ERROR. Login failed. Error: {err}")
@@ -574,9 +643,16 @@ class LogInWindow(QtWidgets.QMainWindow):
         
         profile = client.get_profile()
         
+        print("====================== Save data ======================")
+        
         CONFIG_MANAGER.update_config_data("player.Player.username", profile.name)
         CONFIG_MANAGER.update_config_data("player.Mojang.have_licence", str(1))
-        CONFIG_MANAGER.update_config_data("player.Mojang.access_code", str(client.bearer_token))
+        
+        print("====================== Save crypted data ======================")
+        
+        CONFIG_MANAGER.update_config_data("player.Mojang.access_code", encode_str(SECRET_CRYPTO_KEY, \
+                                                                            CONFIG_MANAGER.get_config("player.Mojang.crypto_vi"), \
+                                                                            str(client.bearer_token)))
         CONFIG_MANAGER.update_config_data("player.Mojang.uuid", str(profile.id), update_save=True)
         
         self.succesfull_login.emit(profile.name)
@@ -657,13 +733,21 @@ class MainWindow(QtWidgets.QMainWindow):
         self.launch_thread.run_complete_callback.connect(self.run_callback)
         
         if CONFIG_MANAGER.get_config("player.Mojang.have_licence") == "1":
-            client = Client(bearer_token="BEARER_TOKEN_HERE")
+            client = Client(bearer_token=str(decode_str(SECRET_CRYPTO_KEY, \
+                                                    CONFIG_MANAGER.get_config("player.Mojang.crypto_vi"), \
+                                                    CONFIG_MANAGER.get_config("player.Mojang.access_code"))))
             
             profile = client.get_profile()
             
             CONFIG_MANAGER.update_config_data("player.Player.username", profile.name)
+            CONFIG_MANAGER.update_config_data("player.Mojang.uuid", profile.id)
             CONFIG_MANAGER.update_config_data("player.Mojang.have_licence", str(1))
-            CONFIG_MANAGER.update_config_data("player.Mojang.access_code", str(client.bearer_token), update_save=True)
+            CONFIG_MANAGER.update_config_data("player.Mojang.access_code", encode_str(SECRET_CRYPTO_KEY, \
+                                                                                CONFIG_MANAGER.get_config("player.Mojang.crypto_vi"), \
+                                                                                str(client.bearer_token)), update_save=True)
+            
+            self.ui.button_microsoftAccount.setToolTip(f"You are already logged in\nProfile ID: {profile.id}")
+            self.ui.lineEdit.setEnabled(False)
 
         if int(CONFIG_MANAGER.get_config("player.Player.path_num")) != PATH_NUM: # type: ignore
             CONFIG_MANAGER.update_config_data("player.Player.path_num", str(PATH_NUM))
@@ -714,7 +798,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self.launch_thread.start()
 
     def succesful_login(self, username:str):
-        CONFIG_MANAGER.update_configs()
+        """Saves username.
+
+        Args:
+            username (str)
+        """      
+        
+        self.login_window.hide()       
+        
+        POPUP_WINDOW.update("Success", "You have successfully logged in")
+        self.ui.button_microsoftAccount.setToolTip(f"You are already logged in\nProfile ID: {CONFIG_MANAGER.get_config('player.Mojang.uuid')}")
+        self.ui.lineEdit.setEnabled(False)
         
         self.username = username
 
@@ -769,7 +863,9 @@ class MainWindow(QtWidgets.QMainWindow):
         
         code = ""
         if int(CONFIG_MANAGER.get_config("player.Mojang.have_licence")) == 1: # type: ignore
-            code = CONFIG_MANAGER.get_config("player.Mojang.access_code")
+            code = decode_str(SECRET_CRYPTO_KEY, \
+                                CONFIG_MANAGER.get_config("player.Mojang.crypto_vi"), \
+                                CONFIG_MANAGER.get_config("player.Mojang.access_code"))
 
         if self.ui.comboBox_avalableTypes.currentIndex() == 0:
             self.launch_thread.launch_setup_signal.emit(mm.get_installed_versions()[self.ui.comboBox_avalableVersions.currentIndex()][0], \
@@ -909,6 +1005,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
 
 if __name__ == "__main__":
+    print("====================== Launcher is loading ======================")
+    
     if not os.path.exists(LAUNCHER_DIRS["launcher"]):
         os.mkdir(LAUNCHER_DIRS["launcher"])
     if not os.path.exists(LAUNCHER_DIRS["player_data"]):
@@ -926,6 +1024,17 @@ if __name__ == "__main__":
     
     POPUP_WINDOW = PopupWindow()
     POPUP_WINDOW.setup("Test", f"Test")
+    
+    CONFIG_MANAGER.check_config_struct("player")
+    
+    if CONFIG_MANAGER.get_config("player.Mojang.crypto_vi") == "":
+        CONFIG_MANAGER.update_config_data("player.Mojang.crypto_vi", base64.b64encode(os.urandom(16)).decode("utf-8"), update_save=True)
+        
+        if CONFIG_MANAGER.get_config("player.Mojang.have_licence") == "1":
+            CONFIG_MANAGER.update_config_data("player.Mojang.have_licence", 0)
+            CONFIG_MANAGER.update_config_data("player.Mojang.access_code", "")
+            
+            POPUP_WINDOW.update("No crypto", "You need to log in again, as your access code has not been encrypted")
     
     application = MainWindow()
     application.show()

@@ -1,4 +1,4 @@
-# pylint: disable=line-too-long, invalid-name, import-error, multiple-imports, unspecified-encoding, broad-exception-caught, trailing-whitespace, no-name-in-module, unused-import
+# pylint: disable=line-too-long, consider-using-dict-items, invalid-name, import-error, multiple-imports, unspecified-encoding, broad-exception-caught, trailing-whitespace, no-name-in-module, unused-import
 
 import configparser, json
 
@@ -50,6 +50,16 @@ player_data.ini:
     args =            # аргументы запуска mc
 
 """
+
+
+#=========================================================                      =========================================================
+#========================================================= Data Storage Classes =========================================================
+#=========================================================                      =========================================================
+
+class Config:
+    def __init__(self, path:str, check_paths:dict):
+        self.path = path
+        self.check_paths = check_paths
 
 
 #=========================================================           =========================================================
@@ -126,19 +136,15 @@ def write_config(config_path:str, data_path:str, data, write_method="change"):
 
 class ConfigManager():
     def __init__(self, **dirs):
-        self.config_dirs = {
-            "player":     dirs["player"],
-            "vlaunchers": dirs["vlaunchers"]
-        }
+        self.configs = dirs.copy()
         
         self.loaded_configs = {}
         
         self.update_configs()
     
-    
-    
-    def get_config(self, _path:str):
-        self.update_configs()
+    def get_config(self, _path:str, update_configs=True):
+        if update_configs:
+            self.update_configs()
         
         path = _path.split('.')
         
@@ -153,16 +159,28 @@ class ConfigManager():
         return current_part
     
     def update_configs(self):
-        self.loaded_configs = {
-            "player":     read_config(self.config_dirs["player"]),
-            "vlaunchers": read_config(self.config_dirs["vlaunchers"])
-        }
+        for i in self.configs.keys():
+            self.loaded_configs[i] = read_config(self.configs[i].path)
     
     def update_config_data(self, path, data, write_type="change", update_save=False):
-        write_config(self.config_dirs[path.split(".")[0]], path[path.find(".")+1:], data, write_type) # type: ignore
+        write_config(self.configs[path.split(".")[0]].path, path[path.find(".")+1:], str(data), write_type) # type: ignore
         
         if update_save:
             self.update_configs()
-
-if __name__ == "__main__":
-    write_config("C:\\Users\\MakarTs\\Documents\\Makar\\Programmming\\Python\\Minecraft Launcher\\inital\\player_data.ini", "Mojang.uuid", "")
+    
+    def check_config_struct(self, config):
+        _type = self.configs[config].path.split(".")[-1]
+        
+        if _type == "ini":
+            for i in self.configs[config].check_paths.keys():
+                if self.configs[config].check_paths[i] == "__dir__":
+                    continue
+                
+                path = f"{config}.{i}"
+                
+                result = self.get_config(path, False)
+                
+                if result is None:
+                    self.update_config_data(path, self.configs[config].check_paths[i])
+        
+                
