@@ -163,7 +163,10 @@ class ConfigManager():
             self.loaded_configs[i] = read_config(self.configs[i].path)
     
     def update_config_data(self, path, data, write_type="change", update_save=False):
-        write_config(self.configs[path.split(".")[0]].path, path[path.find(".")+1:], str(data), write_type) # type: ignore
+        if isinstance(data, int) or isinstance(data, float):
+            data = str(data)
+        
+        write_config(self.configs[path.split(".")[0]].path, path[path.find(".")+1:], data, write_type) # type: ignore
         
         if update_save:
             self.update_configs()

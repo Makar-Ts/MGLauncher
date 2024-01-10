@@ -881,13 +881,14 @@ class MainWindow(QtWidgets.QMainWindow):
                 return
             
             if version['type'] == "fabric":
-                if version['version'][0].isdigit():
+                if not "fabric-loader-" in version['version']:
                     ver_to_parse = mm.get_installed_versions()
 
                     for i in ver_to_parse:
                         if version['version'] in i[0] and "fabric-loader-" in i[0]:
                             CONFIG_MANAGER.update_config_data(f"vlaunchers.vlaunchers.{self.ui.comboBox_avalableVersions.currentIndex()}.version", \
                                                                i[0], update_save=True)
+                            version['version'] = i[0]
 
             old_mods = os.listdir(LAUNCHER_DIRS["mc_mods"])
 
