@@ -693,6 +693,8 @@ class MainWindow(QtWidgets.QMainWindow):
         for i in installed_versions:
             self.ui.comboBox_avalableVersions.addItem(f"{i[0]}{(i[1] != 'release')*(' - '+i[1])}")
 
+        self.ui.comboBox_avalableVersions.currentIndexChanged.connect(self.onChanged_version)
+        
         self.ui.comboBox_avalableTypes.addItem("Installed")
         self.ui.comboBox_avalableTypes.addItem("VLaunchers")
         self.ui.comboBox_avalableTypes.currentTextChanged.connect(self.onChanged_type)
@@ -966,6 +968,14 @@ class MainWindow(QtWidgets.QMainWindow):
             self.ui.button_check.setText("Check")
         elif self.ui.comboBox_avalableTypes.currentIndex() == 1:
             self.ui.button_check.setText("Edit")
+    
+    def onChanged_version(self):
+        if "-forge-" in self.ui.comboBox_avalableVersions.currentText() or \
+            "fabric-loader-" in self.ui.comboBox_avalableVersions.currentText():
+            
+            self.ui.button_check.setEnabled(False)
+        else:
+            self.ui.button_check.setEnabled(True)
 
     def update_progress(self, progress:int, max_progress:int, label:str):
         """Update progress bar.
