@@ -121,7 +121,7 @@ def get_mod_data(path:str) -> ModData|None:
                             
                         data = ModData(path, \
                                     non_structured_data.get(MODS_DATA_STRUCT['forge_legacy']['id'], "id"), \
-                                    "fabric", \
+                                    "forge", \
                                     non_structured_data.get(MODS_DATA_STRUCT['forge_legacy']['version'], "1.0"), \
                                     non_structured_data.get(MODS_DATA_STRUCT['forge_legacy']['name'], "name"), \
                                     non_structured_data.get(MODS_DATA_STRUCT['forge_legacy']['url'], "no url :("), \
