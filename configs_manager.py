@@ -83,19 +83,20 @@ def read_config(path):
     
     type = path.split('.')[-1]
     
-    if type == 'ini':
-        config = configparser.ConfigParser()
-        config.read(path)
-        
-        return config
-    if type == 'json':
-        with open(path, 'r') as file:
-            try:
-                file_data = json.load(file)
+    match type:
+        case 'ini':
+            config = configparser.ConfigParser()
+            config.read(path)
+            
+            return config
+        case 'json':
+            with open(path, 'r') as file:
+                try:
+                    file_data = json.load(file)
 
-                return file_data
-            except json.decoder.JSONDecodeError: # если файл пустой
-                return {}
+                    return file_data
+                except json.decoder.JSONDecodeError: # если файл пустой
+                    return {}
             
 def write_config(config_path:str, data_path:str, data, write_method="change"):
     """Write data to the config.
@@ -134,25 +135,28 @@ def write_config(config_path:str, data_path:str, data, write_method="change"):
     if write_method == "change" or type == 'ini':
         current_part[path[-1]] = data # type: ignore
     
-    if type == 'ini':
-        if isinstance(config, configparser.ConfigParser):
-            with open(config_path, 'w') as configfile:    # save
-                config.write(configfile)
-        else:
-            print(f"Invalid config class: {config.__class__.__name__} must be a configparser.ConfigParser()")
-    if type == 'json':
-        if write_method != "change":
-            if write_method == "append.list":
-                current_part[path[-1]].append(data) # type: ignore
-            elif write_method == "append.dict":
-                current_part[path[-1]] = data # type: ignore
+    match type:
+        case 'ini':
+            if isinstance(config, configparser.ConfigParser):
+                with open(config_path, 'w') as configfile:    # save
+                    config.write(configfile)
             else:
-                print("Unknown write method")
-                return
+                print(f"Invalid config class: {config.__class__.__name__} must be a configparser.ConfigParser()")
+        case 'json':
+            if write_method != "change":
+                if write_method == "append.list":
+                    current_part[path[-1]].append(data) # type: ignore
+                elif write_method == "append.dict":
+                    current_part[path[-1]] = data # type: ignore
+                else:
+                    print("Unknown write method")
+                    return
 
-        with open(config_path, 'w') as file:
-            file.seek(0)
-            json.dump(config, file, indent = 4)
+            with open(config_path, 'w') as file:
+                file.seek(0)
+                json.dump(config, file, indent = 4)
+        case _:
+            print(f"Invalid config type: {type}")
                 
 
 #=========================================================               =========================================================

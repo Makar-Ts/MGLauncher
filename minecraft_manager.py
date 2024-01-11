@@ -34,28 +34,29 @@ def get_all_versions(_type = 0):
         list[list[str, str]]: [id, type]
     """    
     
-    if _type == 1:
-        unsorted_list = mllib.forge.list_forge_versions()
-        return list(map(lambda x: [x, ''], unsorted_list))
-    elif _type == 2:
-        unsorted_list = mllib.utils.get_version_list()
-        output = []
-        
-        for i in unsorted_list:
-            if i['id'].find('-') != -1:
-                continue                    # если пре версия - 1.20.4-pre3 и т.д.
-            if i['id'][2] == 'w' and i['id'][5].isalpha():
-                continue                    # если снапшот 23w07a и т.д.
+    match _type:
+        case 0:
+            unsorted_list = mllib.utils.get_version_list()
+            return list(map(lambda x: [x['id'], x['type']], unsorted_list))
+        case 1:
+            unsorted_list = mllib.forge.list_forge_versions()
+            return list(map(lambda x: [x, ''], unsorted_list))
+        case 2:
+            unsorted_list = mllib.utils.get_version_list()
+            output = []
             
-            output.append([i['id'], i['type']])
+            for i in unsorted_list:
+                if i['id'].find('-') != -1:
+                    continue                    # если пре версия - 1.20.4-pre3 и т.д.
+                if i['id'][2] == 'w' and i['id'][5].isalpha():
+                    continue                    # если снапшот 23w07a и т.д.
+                
+                output.append([i['id'], i['type']])
+                
+                if i['id'] == FABRIC_EARLIEST_VERSION:
+                    return output
             
-            if i['id'] == FABRIC_EARLIEST_VERSION:
-                return output
-        
-        return output
-    else:
-        unsorted_list = mllib.utils.get_version_list()
-        return list(map(lambda x: [x['id'], x['type']], unsorted_list))
+            return output
     
 
 
@@ -85,28 +86,29 @@ class MinecraftVersionLauncher:
             [bool]: []
         """        
         
-        if self.type == "vanilla":
-            installed_versions = get_all_versions()
-            
-            for i in installed_versions:
-                if i[0] == self.version:
-                    break
-            else:         
+        match self.type:
+            case "vanilla":
+                installed_versions = get_all_versions()
+                
+                for i in installed_versions:
+                    if i[0] == self.version:
+                        break
+                else:         
+                    return False
+                
+                return True
+            case "forge":
+                if mllib.forge.is_forge_version_valid(self.version):
+                    return True
+                
+                forge_version = mllib.forge.find_forge_version(self.version)
+                if forge_version is not None:
+                    self.version = forge_version
+                    return True
+                
                 return False
-            
-            return True
-        if self.type == "forge":
-            if mllib.forge.is_forge_version_valid(self.version):
-                return True
-            
-            forge_version = mllib.forge.find_forge_version(self.version)
-            if forge_version is not None:
-                self.version = forge_version
-                return True
-            
-            return False
-        if self.type == "fabric":
-            return mllib.fabric.is_minecraft_version_supported(self.version)
+            case "fabric":
+                return mllib.fabric.is_minecraft_version_supported(self.version)
         
     def install_minecraft_version(self, callback:dict[str, Callable], _type=0):
         """Install the Minecraft version.
@@ -126,21 +128,22 @@ class MinecraftVersionLauncher:
                 "setMax": self.set_download_max
             }
         
-        if _type == 0:
-            mllib.install.install_minecraft_version(versionid=self.version, \
+        match _type:
+            case 0:
+                mllib.install.install_minecraft_version(versionid=self.version, \
+                                                minecraft_directory=MC_DIR, \
+                                                callback=callback)
+            case 1:
+                if mllib.forge.supports_automatic_install(self.version):
+                    mllib.forge.install_forge_version(versionid=self.version, \
+                                                    path=MC_DIR, \
+                                                    callback=callback)
+                else:
+                    mllib.forge.run_forge_installer(self.version)
+            case 2:
+                mllib.fabric.install_fabric(minecraft_version=self.version, \
                                             minecraft_directory=MC_DIR, \
                                             callback=callback)
-        elif _type == 1:
-            if mllib.forge.supports_automatic_install(self.version):
-                mllib.forge.install_forge_version(versionid=self.version, \
-                                                  path=MC_DIR, \
-                                                  callback=callback)
-            else:
-                mllib.forge.run_forge_installer(self.version)
-        elif _type == 2:
-            mllib.fabric.install_fabric(minecraft_version=self.version, \
-                                        minecraft_directory=MC_DIR, \
-                                        callback=callback)
     
     def start_minecraft_version(self, jvm_args: str|list[str]=""):
         """Starting the mc version

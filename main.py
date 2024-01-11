@@ -8,7 +8,6 @@ import configparser
 import base64, traceback
 import io, sys, os
 import shutil, zipfile, json, tomli
-from turtle import update
 from tkinter import filedialog
 from mojang import Client
 from PyQt5 import QtWidgets
@@ -791,12 +790,14 @@ class MainWindow(QtWidgets.QMainWindow):
 
         if _type != 0 and len(mods) != 0 and name != "":
             data_version = version
-            if _type == 1:
-                splitted = version.split("-")
+            
+            match _type:
+                case 1:
+                    splitted = version.split("-")
 
-                data_version = splitted[0] + "-forge-" + splitted[1]
-            elif _type == 2:
-                data_version = version
+                    data_version = splitted[0] + "-forge-" + splitted[1]
+                case 2:
+                    data_version = version
 
             new_vlauncher = {
                 "name": name,
@@ -851,28 +852,28 @@ class MainWindow(QtWidgets.QMainWindow):
                          -2 - error while creating new version]
         """
 
-        if code == 0:
-            if self.current_mods != []:
-                deleted_mods = os.listdir(LAUNCHER_DIRS["mc_mods"])
+        match code:
+            case 0:
+                if self.current_mods != []:
+                    deleted_mods = os.listdir(LAUNCHER_DIRS["mc_mods"])
 
-                for i in deleted_mods:
-                    if i.split(".")[-1] == "jar":
-                        os.remove(LAUNCHER_DIRS["mc_mods"]+i)
-                self.current_mods = []
+                    for i in deleted_mods:
+                        if i.split(".")[-1] == "jar":
+                            os.remove(LAUNCHER_DIRS["mc_mods"]+i)
+                    self.current_mods = []
 
-            self.show()
-        elif code == 1:
-            self.update_versions_comboBox()
+                self.show()
+            case 1:
+                self.update_versions_comboBox()
 
-            self.download_window.hide()
-            self.create_window.hide()
-            
-            if POPUP_WINDOW: 
-                POPUP_WINDOW.update("Complete", f"Version download complete")
-
-        elif code == -2:
-            self.download_window.hide()
-            self.create_window.hide()
+                self.download_window.hide()
+                self.create_window.hide()
+                
+                if POPUP_WINDOW: 
+                    POPUP_WINDOW.update("Complete", f"Version download complete")
+            case -2:
+                self.download_window.hide()
+                self.create_window.hide()
 
     def onClick_start(self):
         """Start the mc launch
@@ -926,23 +927,23 @@ class MainWindow(QtWidgets.QMainWindow):
     def onClick_check(self):
         """Callback when the user clicks the check (or edit) button
         """
+        match self.ui.comboBox_avalableTypes.currentIndex():
+            case 0:
+                self.download_window.show()
 
-        if self.ui.comboBox_avalableTypes.currentIndex() == 0:
-            self.download_window.show()
+                self.launch_thread.launch_setup_signal.emit(mm.get_installed_versions()\
+                                                            [self.ui.comboBox_avalableVersions.currentIndex()][0], \
+                                                            self.username, "", "", \
+                                                            1, CONFIG_MANAGER.get_config("player.Java.args"))
+                self.launch_thread.start()
+            case 1:
+                vlauncher_data = CONFIG_MANAGER.get_config("vlaunchers.vlaunchers")[self.ui.comboBox_avalableVersions.currentIndex()] # type: ignore
 
-            self.launch_thread.launch_setup_signal.emit(mm.get_installed_versions()\
-                                                        [self.ui.comboBox_avalableVersions.currentIndex()][0], \
-                                                        self.username, "", "", \
-                                                        1, CONFIG_MANAGER.get_config("player.Java.args"))
-            self.launch_thread.start()
-        elif self.ui.comboBox_avalableTypes.currentIndex() == 1:
-            vlauncher_data = CONFIG_MANAGER.get_config("vlaunchers.vlaunchers")[self.ui.comboBox_avalableVersions.currentIndex()] # type: ignore
-
-            if not isinstance(vlauncher_data, dict): 
-                return
-            
-            self.edit_window.setup_mod_ui(vlauncher_data, self.ui.comboBox_avalableVersions.currentIndex())
-            self.edit_window.show()
+                if not isinstance(vlauncher_data, dict): 
+                    return
+                
+                self.edit_window.setup_mod_ui(vlauncher_data, self.ui.comboBox_avalableVersions.currentIndex())
+                self.edit_window.show()
 
     def onClick_new(self):
         """Callback when the user clicks "Create new VLauncher" button
@@ -954,27 +955,27 @@ class MainWindow(QtWidgets.QMainWindow):
     def onClick_delete(self):
         """Deletes the vlauncher or mc version.
         """
+        match self.ui.comboBox_avalableTypes.currentIndex():
+            case 0:
+                shutil.rmtree(LAUNCHER_DIRS["mc_versions"]+mm.get_installed_versions()\
+                            [self.ui.comboBox_avalableVersions.currentIndex()][0])
 
-        if self.ui.comboBox_avalableTypes.currentIndex() == 0:
-            shutil.rmtree(LAUNCHER_DIRS["mc_versions"]+mm.get_installed_versions()\
-                          [self.ui.comboBox_avalableVersions.currentIndex()][0])
+                self.update_versions_comboBox()
+            case 1:
+                vlauncher_name = ""
+                with open(LAUNCHER_DIRS["vlaunchers_data"], 'r+') as file:
+                    data = json.load(file)
 
-            self.update_versions_comboBox()
-        elif self.ui.comboBox_avalableTypes.currentIndex() == 1:
-            vlauncher_name = ""
-            with open(LAUNCHER_DIRS["vlaunchers_data"], 'r+') as file:
-                data = json.load(file)
+                    vlauncher_name = data["vlaunchers"]\
+                                        [self.ui.comboBox_avalableVersions.currentIndex()]["name"]
 
-                vlauncher_name = data["vlaunchers"]\
-                                     [self.ui.comboBox_avalableVersions.currentIndex()]["name"]
+                    del data['vlaunchers'][self.ui.comboBox_avalableVersions.currentIndex()]
+                    file.seek(0)
+                    json.dump(data, file, indent=4)
+                    file.truncate()
 
-                del data['vlaunchers'][self.ui.comboBox_avalableVersions.currentIndex()]
-                file.seek(0)
-                json.dump(data, file, indent=4)
-                file.truncate()
-
-            shutil.rmtree(LAUNCHER_DIRS["vlaunchers"]+vlauncher_name)
-            self.update_versions_comboBox()
+                shutil.rmtree(LAUNCHER_DIRS["vlaunchers"]+vlauncher_name)
+                self.update_versions_comboBox()
 
     def onChanged_type(self):
         """Callback when type changed.
@@ -982,10 +983,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.update_versions_comboBox()
 
-        if self.ui.comboBox_avalableTypes.currentIndex() == 0:
-            self.ui.button_check.setText("Check")
-        elif self.ui.comboBox_avalableTypes.currentIndex() == 1:
-            self.ui.button_check.setText("Edit")
+        match self.ui.comboBox_avalableTypes.currentIndex():
+            case 0:
+                self.ui.button_check.setText("Check")
+            case 1:
+                self.ui.button_check.setText("Edit")
     
     def onChanged_version(self):
         """Callback when version changed.
@@ -1017,22 +1019,23 @@ class MainWindow(QtWidgets.QMainWindow):
         """Update the list of versions of the combo box.
         """
 
-        if self.ui.comboBox_avalableTypes.currentIndex() == 0:
-            installed_versions = mm.get_installed_versions()
-            self.ui.comboBox_avalableVersions.clear()
+        match self.ui.comboBox_avalableTypes.currentIndex():
+            case 0:
+                installed_versions = mm.get_installed_versions()
+                self.ui.comboBox_avalableVersions.clear()
 
-            for i in installed_versions:
-                self.ui.comboBox_avalableVersions.addItem(f"{i[0]}{(i[1] != 'release')*(' - '+i[1])}")
-        elif self.ui.comboBox_avalableTypes.currentIndex() == 1:
-            installed_versions = CONFIG_MANAGER.get_config("vlaunchers.vlaunchers") # type: ignore
+                for i in installed_versions:
+                    self.ui.comboBox_avalableVersions.addItem(f"{i[0]}{(i[1] != 'release')*(' - '+i[1])}")
+            case 1:
+                installed_versions = CONFIG_MANAGER.get_config("vlaunchers.vlaunchers") # type: ignore
 
-            if not isinstance(installed_versions, list): 
-                return
-            
-            self.ui.comboBox_avalableVersions.clear()
+                if not isinstance(installed_versions, list): 
+                    return
+                
+                self.ui.comboBox_avalableVersions.clear()
 
-            for i in installed_versions:
-                self.ui.comboBox_avalableVersions.addItem(f"{i['name']} - {i['type']}")
+                for i in installed_versions:
+                    self.ui.comboBox_avalableVersions.addItem(f"{i['name']} - {i['type']}")
 
 
 if __name__ == "__main__":
