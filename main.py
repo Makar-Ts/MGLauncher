@@ -292,7 +292,7 @@ class LaunchThread(QThread): # работа с minecraft_manager в отдель
         elif self.run_type == 0:
             mlauncher = mm.MinecraftVersionLauncher(self.username, self.version_id, access_token=self.access_code, uuid=self.uuid)
 
-            mlauncher.start_minecraft_version([self.jvm_args])
+            mlauncher.start_minecraft_version(self.jvm_args)
 
             self.run_complete_callback.emit(0)
 

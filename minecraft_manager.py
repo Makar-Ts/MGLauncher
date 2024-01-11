@@ -145,7 +145,7 @@ class MinecraftVersionLauncher:
                                             minecraft_directory=MC_DIR, \
                                             callback=callback)
     
-    def start_minecraft_version(self, jvm_args: str|list[str]=""):
+    def start_minecraft_version(self, jvm_args: str=""):
         """Starting the mc version
         Recommend run the check_minecraft_version function before starting
         
@@ -153,11 +153,20 @@ class MinecraftVersionLauncher:
             jvm_args (str|list[str], optional): [jvmArguments]. Defaults to "".
         """
         
+        args_splitted = jvm_args.split(" ")
+        
+        print("args:"+str(args_splitted))
+        
+        args_accepted = list()
+        for i in args_splitted:
+            if i != "" and i != " ": 
+                args_accepted.append(i)
+        
         options = {
             'username': self.username,
             'uuid': (self.uuid == "")*str(uuid1())+self.uuid,
             'token': self.access_token,                # оставлять пустым (при пиратке)
-            "jvmArguments": jvm_args
+            "jvmArguments": args_accepted
         }
 
         subprocess.call(mllib.command.get_minecraft_command(version=self.version, \
