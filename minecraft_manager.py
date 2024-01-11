@@ -24,7 +24,7 @@ def get_installed_versions() -> list[list[str]]:
     return list(map(lambda x: [x['id'], x['type']], unsorted_list)) 
     # id - версия mc, а type - vanilla или modded (пока что не нужно)
 
-def get_all_versions(_type = 0):
+def get_all_versions(_type = 0.0):
     """Return a list of all versions of minecraft
 
     Args:
@@ -41,6 +41,27 @@ def get_all_versions(_type = 0):
         case 1:
             unsorted_list = mllib.forge.list_forge_versions()
             return list(map(lambda x: [x, ''], unsorted_list))
+        case 1.1:
+            unsorted_list = mllib.forge.list_forge_versions()
+            output = list()
+            
+            data = unsorted_list[0].split('-')
+            output.append({"major": data[0], "minor": [data[1]]})
+            current_index = 0
+            
+            for i in unsorted_list:
+                data = i.split('-')
+                
+                if output[current_index]["major"] != data[0]:
+                    output.append({"major": data[0], "minor": [data[1]]})
+                    
+                    current_index += 1
+                    
+                    continue
+                
+                output[current_index]["minor"].append(data[1])
+            
+            return output
         case 2:
             unsorted_list = mllib.utils.get_version_list()
             output = []

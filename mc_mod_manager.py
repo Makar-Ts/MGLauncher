@@ -7,7 +7,8 @@ import zipfile, tomli, json
 
 MODS_DATA_PATH = {      # расположение инфы о моде (имени) внутри .jar файла
     "forge": "META-INF/mods.toml",
-    "fabric": "fabric.mod.json"
+    "fabric": "fabric.mod.json",
+    "forge_legacy": "mcmod.info"
 }
 
 MODS_DATA_STRUCT = {
@@ -31,7 +32,18 @@ MODS_DATA_STRUCT = {
         "credits":      "contributors",
         "authors":      "authors",  # ", ".join
         "description":  "description"
-    }
+    },
+    
+    "forge_legacy": {
+        "id":           "modId",
+        "version":      "version",
+        "name":         "name",
+        "url":          "url",
+        "logo":         "logoFile",
+        "credits":      "",
+        "authors":      "authorList",
+        "description":  "description"
+    }    
 }
 
 
@@ -81,26 +93,43 @@ def get_mod_data(path:str) -> ModData|None:
                                 non_structured_data.get(MODS_DATA_STRUCT['forge']['authors'], "me"), \
                                 non_structured_data.get(MODS_DATA_STRUCT['forge']['description'], ""))
             except KeyError:
-                with mod.open(MODS_DATA_PATH["fabric"]) as mod_json:
-                    data = json.load(mod_json)
-                    non_structured_data = data
-                    
-                    authors = non_structured_data.get(MODS_DATA_STRUCT['fabric']['authors'], ["me"])
-                    
-                    if len(authors) > 0:
-                        if isinstance(authors[0], dict):
-                            authors = authors[0]['name']
+                try:
+                    with mod.open(MODS_DATA_PATH["fabric"]) as mod_json:
+                        data = json.load(mod_json)
+                        non_structured_data = data
                         
-                    data = ModData(path, \
-                                non_structured_data.get(MODS_DATA_STRUCT['fabric']['id'], "id"), \
-                                "fabric", \
-                                non_structured_data.get(MODS_DATA_STRUCT['fabric']['version'], "1.0"), \
-                                non_structured_data.get(MODS_DATA_STRUCT['fabric']['name'], "name"), \
-                                non_structured_data.get(MODS_DATA_STRUCT['fabric']['url'], {"homepage":"no url :("}).get("homepage", "no url :("), \
-                                ", ".join(authors), \
-                                non_structured_data.get(MODS_DATA_STRUCT['fabric']['description'], ""))
+                        authors = non_structured_data.get(MODS_DATA_STRUCT['fabric']['authors'], ["me"])
+                        
+                        if len(authors) > 0:
+                            if isinstance(authors[0], dict):
+                                authors = authors[0]['name']
+                            
+                        data = ModData(path, \
+                                    non_structured_data.get(MODS_DATA_STRUCT['fabric']['id'], "id"), \
+                                    "fabric", \
+                                    non_structured_data.get(MODS_DATA_STRUCT['fabric']['version'], "1.0"), \
+                                    non_structured_data.get(MODS_DATA_STRUCT['fabric']['name'], "name"), \
+                                    non_structured_data.get(MODS_DATA_STRUCT['fabric']['url'], {"homepage":"no url :("}).get("homepage", "no url :("), \
+                                    ", ".join(authors), \
+                                    non_structured_data.get(MODS_DATA_STRUCT['fabric']['description'], ""))
+                except KeyError:
+                    with mod.open(MODS_DATA_PATH["forge_legacy"]) as mod_json:
+                        data = json.load(mod_json)
+                        non_structured_data = data[0]
+                        
+                        authors = non_structured_data.get(MODS_DATA_STRUCT['forge_legacy']['authors'], ["me"])[0]
+                            
+                        data = ModData(path, \
+                                    non_structured_data.get(MODS_DATA_STRUCT['forge_legacy']['id'], "id"), \
+                                    "fabric", \
+                                    non_structured_data.get(MODS_DATA_STRUCT['forge_legacy']['version'], "1.0"), \
+                                    non_structured_data.get(MODS_DATA_STRUCT['forge_legacy']['name'], "name"), \
+                                    non_structured_data.get(MODS_DATA_STRUCT['forge_legacy']['url'], "no url :("), \
+                                    ", ".join(authors), \
+                                    non_structured_data.get(MODS_DATA_STRUCT['forge_legacy']['description'], ""))
             
             return data
         except Error as err:
             print(f"Could not load mod [ {path} ] configuration file. Error: {err.args}")
             return None
+        
