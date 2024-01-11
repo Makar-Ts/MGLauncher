@@ -1,4 +1,6 @@
 # pylint: disable=line-too-long, consider-using-dict-items, invalid-name, import-error, multiple-imports, unspecified-encoding, broad-exception-caught, trailing-whitespace, no-name-in-module, unused-import
+"""Module for easily reading, writing and configuring configs
+"""
 
 import configparser, json
 
@@ -57,6 +59,9 @@ player_data.ini:
 #=========================================================                      =========================================================
 
 class Config:
+    """Storage class for configuration file.
+    """    
+    
     def __init__(self, path:str, check_paths:dict):
         self.path = path
         self.check_paths = check_paths
@@ -67,6 +72,15 @@ class Config:
 #=========================================================           =========================================================
 
 def read_config(path):
+    """Read in a config file and return it as a dict .
+
+    Args:
+        path (str): [path to config file]
+
+    Returns:
+        ConfigParser | dict
+    """    
+    
     type = path.split('.')[-1]
     
     if type == 'ini':
@@ -84,6 +98,17 @@ def read_config(path):
                 return {}
             
 def write_config(config_path:str, data_path:str, data, write_method="change"):
+    """Write data to the config.
+
+    Args:
+        config_path (str): [path to config file]
+        data_path (str): [path to data in config file]
+        data (Any): [data to write to config file]
+        write_method (str, optional): [change for ini and json
+                                       append.list (json only) add data to path list
+                                       append.dict (json only) add data to dict]. Defaults to "change".
+    """    
+    
     config = read_config(config_path)
     type = config_path.split('.')[-1]
     
@@ -135,6 +160,9 @@ def write_config(config_path:str, data_path:str, data, write_method="change"):
 #=========================================================               =========================================================
 
 class ConfigManager():
+    """Class for confruge configs easily.
+    """    
+    
     def __init__(self, **dirs):
         self.configs = dirs.copy()
         
@@ -143,6 +171,16 @@ class ConfigManager():
         self.update_configs()
     
     def get_config(self, _path:str, update_configs=True):
+        """Get a config value from a path.
+
+        Args:
+            _path (str): [path to value]
+            update_configs (bool, optional): [auto-update loaded configs before get value]. Defaults to True.
+
+        Returns:
+            [Any]: [value]
+        """        
+        
         if update_configs:
             self.update_configs()
         
@@ -159,10 +197,24 @@ class ConfigManager():
         return current_part
     
     def update_configs(self):
+        """Update loaded configs
+        """        
+        
         for i in self.configs.keys():
             self.loaded_configs[i] = read_config(self.configs[i].path)
     
     def update_config_data(self, path, data, write_type="change", update_save=False):
+        """Update config data
+
+        Args:
+            path (str): [path to value]
+            data (Any): [value data]
+            write_type (str, optional): [change for ini and json
+                                         append.list (json only) add data to path list
+                                         append.dict (json only) add data to dict]. Defaults to "change".
+            update_save (bool, optional): [description]. Defaults to False.
+        """        
+        
         if isinstance(data, int) or isinstance(data, float):
             data = str(data)
         
@@ -172,6 +224,12 @@ class ConfigManager():
             self.update_configs()
     
     def check_config_struct(self, config):
+        """Check struct of the config (ini only).
+
+        Args:
+            config (str): [config's name]
+        """        
+        
         _type = self.configs[config].path.split(".")[-1]
         
         if _type == "ini":

@@ -5,7 +5,7 @@
 
 import time
 import configparser
-import base64
+import base64, traceback
 import io, sys, os
 import shutil, zipfile, json, tomli
 from turtle import update
@@ -157,7 +157,17 @@ def decode_str(secret_key, iv_base64, text_base64) -> str:
     decrypted_text = obj.decrypt(base64.b64decode(text_base64))
     
     return decrypted_text.decode("utf-8")
+
+def excepthook(exc_type, exc_value, exc_tb):
+    """Called when an exception is raised.
+    """    
     
+    tb = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+    print(f"CRITICAL ERROR: {tb}")
+    print("--This window will be closed in 200 seconds--")
+    time.sleep(200)
+    QtWidgets.QApplication.quit()
+
 
 #=========================================================              =========================================================
 #========================================================= Data Classes =========================================================
@@ -626,10 +636,14 @@ class LogInWindow(QtWidgets.QMainWindow):
         self.ui.button_cancel.clicked.connect(self.onClick_cancel)
     
     def onClick_login(self):
+        """Callback thar is called when the user clicks on the login button
+        """        
+        
         login = self.ui.line_login.text().replace(" ", "")
         password = self.ui.line_password.text().replace(" ", "")
         
-        if (login == "" or password == ""): return
+        if (login == "" or password == ""): 
+            return
         
         try:
             print("====================== Connecting to Mojang servers ======================")
@@ -658,6 +672,9 @@ class LogInWindow(QtWidgets.QMainWindow):
         self.succesfull_login.emit(profile.name)
     
     def onClick_cancel(self):
+        """Hide the window.
+        """        
+        
         self.hide()
 
 
@@ -971,9 +988,12 @@ class MainWindow(QtWidgets.QMainWindow):
             self.ui.button_check.setText("Edit")
     
     def onChanged_version(self):
+        """Callback when version changed.
+        """        
+        
         if "-forge-" in self.ui.comboBox_avalableVersions.currentText() or \
             "fabric-loader-" in self.ui.comboBox_avalableVersions.currentText():
-            
+
             self.ui.button_check.setEnabled(False)
         else:
             self.ui.button_check.setEnabled(True)
@@ -1049,10 +1069,9 @@ if __name__ == "__main__":
     
     application = MainWindow()
     application.show()
-
-    try:
-        sys.exit(app.exec())
-    except Exception as e:
-        print("CRITICAL ERROR: " + str(e))
-        print("--This window will be closed in 200 seconds--")
-        time.sleep(200)
+    
+    sys.excepthook = excepthook
+    
+    ext = app.exec()
+    
+    sys.exit(ext)
