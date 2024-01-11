@@ -711,6 +711,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.ui.comboBox_avalableVersions.currentIndexChanged.connect(self.onChanged_version)
         
+        enabled = len(installed_versions) != 0
+        self.ui.button_check.setEnabled(enabled)
+        self.ui.button_delete.setEnabled(enabled)
+        
         self.ui.comboBox_avalableTypes.addItem("Installed")
         self.ui.comboBox_avalableTypes.addItem("VLaunchers")
         self.ui.comboBox_avalableTypes.currentTextChanged.connect(self.onChanged_type)
@@ -1026,6 +1030,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
                 for i in installed_versions:
                     self.ui.comboBox_avalableVersions.addItem(f"{i[0]}{(i[1] != 'release')*(' - '+i[1])}")
+                
+                enabled = len(installed_versions) != 0
+                self.ui.button_check.setEnabled(enabled)
+                self.ui.button_delete.setEnabled(enabled)
+                    
             case 1:
                 installed_versions = CONFIG_MANAGER.get_config("vlaunchers.vlaunchers") # type: ignore
 
@@ -1036,6 +1045,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
                 for i in installed_versions:
                     self.ui.comboBox_avalableVersions.addItem(f"{i['name']} - {i['type']}")
+                
+                enabled = len(installed_versions) != 0
+                self.ui.button_check.setEnabled(enabled)
+                self.ui.button_delete.setEnabled(enabled)
 
 
 if __name__ == "__main__":

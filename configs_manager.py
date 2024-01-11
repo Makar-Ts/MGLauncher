@@ -238,14 +238,14 @@ class ConfigManager():
         
         if _type == "ini":
             for i in self.configs[config].check_paths.keys():
-                if self.configs[config].check_paths[i] == "__dir__":
-                    continue
-                
                 path = f"{config}.{i}"
                 
                 result = self.get_config(path, False)
                 
                 if result is None:
-                    self.update_config_data(path, self.configs[config].check_paths[i])
+                    if self.configs[config].check_paths[i] == "__dir__":
+                        self.update_config_data(path, {})
+                    else:
+                        self.update_config_data(path, self.configs[config].check_paths[i])
         
                 
