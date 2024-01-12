@@ -8,18 +8,20 @@ import configparser
 import base64, traceback
 import io, sys, os
 import shutil, zipfile, json, tomli
+from requests.exceptions import ConnectionError
 from tkinter import filedialog
-from mojang import Client
+from mojang import Client, errors
 from PyQt5 import QtWidgets
 from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtGui import QIcon
 from Crypto.Cipher import AES
+from dir_data import LAUNCHER_DIRS, CSS_STYLESHEET, INITAL_DIRS, ASSETS_DIRS, PATH_NUM
 import configs_manager
-from assets.ui.main_ui import          Ui_MainWindow
-from assets.ui.download_menu_ui import Ui_DownloadWindow
-from assets.ui.create_menu_ui import   Ui_CreateWindow
-from assets.ui.edit_menu_ui import     Ui_EditWindow
-from assets.ui.log_in_window_ui import Ui_LogInWindow
+from assets.ui.structure.main_ui import          Ui_MainWindow
+from assets.ui.windows.DownloadWindow import DownloadWindow
+from assets.ui.windows.EditWindow     import EditWindow
+from assets.ui.windows.CreateWindow   import CreateWindow
+from assets.ui.windows.LogInWindow    import LogInWindow
 from assets.animated_ui import PopupWindow
 import minecraft_manager as mm
 import mc_mod_manager as mcmm
@@ -31,65 +33,10 @@ import mc_mod_manager as mcmm
 
 SECRET_CRYPTO_KEY = b'Z\xc9\xd0\x16\xaf\x01\x85\x0e\xff\x9f\xd7\x96$\x0b\xe6\xcb\xfco\xe2\x85\xc5\xebUC\xb1E\xc72L\xa3\rJ'
 
-LAUNCHER_DIRS = {
-    "launcher":        mm.MC_DIR + "/.mglauncher/",
-    "player_data":     mm.MC_DIR + "/.mglauncher/player_data.ini",
-    "vlaunchers_data": mm.MC_DIR + "/.mglauncher/vlaunchers_data.json",
-    "vlaunchers":      mm.MC_DIR + "/.mglauncher/vlaunchers/",           # Папка с сохраненными сборками
-    "mc_mods":         mm.MC_DIR + "/mods/",
-    "mc_old_mods":     mm.MC_DIR + "/mods/old/",
-    "mc_versions":     mm.MC_DIR + "/versions/"
-}
-
-MODS_DATA_PATH = {      # расположение инфы о моде (имени) внутри .jar файла
-    "forge": "META-INF/mods.toml",
-    "fabric": "fabric.mod.json"
-}
-
 
 #=========================================================               =========================================================
 #========================================================= PATH CHECKING =========================================================
 #=========================================================               =========================================================
-
-print(sys.path)
-PATH_NUM = 2
-
-if os.path.exists(LAUNCHER_DIRS["player_data"]):
-    config = configparser.ConfigParser()
-    config.read(LAUNCHER_DIRS["player_data"])
-    
-    try: 
-        PATH_NUM = int(config["Player"]["PATH_NUM"])
-    except KeyError:
-        PATH_NUM = 0
-
-
-CSS_STYLESHEET = sys.path[PATH_NUM] + "/assets/main_style.css"
-
-INITAL_DIRS = {      # Если директории нет в папке mc то отсюда будут брать данные
-    "player_data":     sys.path[PATH_NUM] + "/inital/player_data.ini",
-    "vlaunchers_data": sys.path[PATH_NUM] + "/inital/vlaunchers_data.json"
-}
-
-
-if not os.path.exists(INITAL_DIRS["player_data"]):
-    PATH_NUM = -1
-    while not os.path.exists(INITAL_DIRS["player_data"]): # перебираем PATH индефикаторы пока не найдем нужный
-        PATH_NUM += 1
-        
-        print(f"PATH ERROR. RECALCULATING. PATH_NUM: {PATH_NUM}")
-        
-        CSS_STYLESHEET = sys.path[PATH_NUM] + "/assets/main_style.css"
-        INITAL_DIRS = {      # Если директории нет в папке mc то отсюда будут брать данные
-            "player_data":     sys.path[PATH_NUM] + "/inital/player_data.ini",
-            "vlaunchers_data": sys.path[PATH_NUM] + "/inital/vlaunchers_data.json"
-        }
-
-
-ASSETS_DIRS = {
-    "microsoft_icon": sys.path[PATH_NUM] + "/assets/microsoft.png"
-}
-
 
 POPUP_WINDOW = None # Позже (в main) приравняется к PopupWindow() это просто заполнитель
 
@@ -102,13 +49,15 @@ player_data = configs_manager.Config(LAUNCHER_DIRS["player_data"], {
                                             "Player":              "__dir__",
                                             "Player.username":     "player",
                                             "Player.path_num":     2,
+                                            
                                             "Mojang":              "__dir__",
                                             "Mojang.have_licence": 0,
                                             "Mojang.access_code":  "",
                                             "Mojang.uuid":         "",
                                             "Mojang.crypto_vi":    "",
+                                            
                                             "Java":                "__dir__",
-                                            "Java.args":           ""
+                                            "Java.args":           "",
                                         })
 vlaunchers_data = configs_manager.Config(LAUNCHER_DIRS["vlaunchers_data"], {
                                             "vlaunchers":          "__dir__"
@@ -299,413 +248,6 @@ class LaunchThread(QThread): # работа с minecraft_manager в отдель
 
 #========================================================= Windows Classes ==================================================
 
-
-#=========================================================                =========================================================
-#========================================================= DownloadWindow =========================================================
-#=========================================================                =========================================================
-
-class DownloadWindow(QtWidgets.QMainWindow):
-    """Class for download progress bar
-    """
-
-    def __init__(self):
-        super(DownloadWindow, self).__init__()
-        self.ui = Ui_DownloadWindow()
-        self.ui.setupUi(self)
-
-        self.current_max = 1
-        self.set_download_progress(0)
-
-    def set_download_status(self, status: str):
-        """Sets the download status .
-
-        Args:
-            status (str)
-        """
-
-        self.ui.label.setText(status)
-
-    def set_download_progress(self, progress: int):
-        """Set download progress to bar.
-
-        Args:
-            progress (int)
-        """
-
-        if self.current_max != 0:
-            self.ui.progressBar.setValue(int(progress/self.current_max*100))
-                # максимум (по стандарту) 100 едениц
-
-    def set_download_max(self, new_max: int):
-        """Set the download max to bar.
-
-        Args:
-            new_max (int)
-        """
-
-        self.current_max = new_max
-
-
-#=========================================================            =========================================================
-#========================================================= EditWindow =========================================================
-#=========================================================            =========================================================
-
-class EditWindow(QtWidgets.QMainWindow):
-    """Window for editing already existing vlaunchers.
-    """    
-    
-    mods_selected = []
-    current_vlauncher_data = {}
-    current_vlauncher_index = 0
-    
-    def __init__(self):
-        super(EditWindow, self).__init__()
-        self.ui = Ui_EditWindow()
-        self.ui.setupUi(self)
-        
-        self.ui.button_mod_add.clicked.connect(self.onClick_add_mod)
-        self.ui.button_mod_remove.clicked.connect(self.onClick_remove_mod)
-        self.ui.button_create.clicked.connect(self.onClick_save)
-    
-    def setup_mod_ui(self, vlauncher_data: dict, vlauncher_index: int):
-        """Setup ui before showing up window
-
-        Args:
-            vlauncher_data (dict): [check vlaunchers_data.json structure]
-            vlauncher_index (int)
-
-        Raises:
-            ValueError: [if version not found]
-        """  
-        self.current_vlauncher_data = vlauncher_data
-        self.current_vlauncher_index = vlauncher_index
-                           
-        self.ui.comboBox_avalableVersions.clear()
-        self.ui.list_mods.clear()
-        
-        installed_versions = mm.get_installed_versions()
-        
-        if vlauncher_data['type'] == "fabric" and vlauncher_data['version'][0].isdigit():
-            for i in installed_versions:
-                if vlauncher_data['version'] in i[0] and "fabric-loader-" in i[0]:
-                    CONFIG_MANAGER.update_config_data(f"vlaunchers.vlaunchers.{i[0]}.version", \
-                                                               i[0], update_save=True)
-                    
-                    vlauncher_data['version'] = i[0]
-                    self.current_vlauncher_data['version'] = i[0]
-                    
-                    break
-        
-        current_ver_index = -1
-        for index, i in enumerate(installed_versions):
-            self.ui.comboBox_avalableVersions.addItem(i[0])
-            
-            if i[0] == vlauncher_data['version']:
-                current_ver_index = index
-        
-        if current_ver_index == -1:
-            raise ValueError("Version not found")
-            
-        self.ui.comboBox_avalableVersions.setCurrentIndex(current_ver_index)
-        
-        mods = list(map(lambda x: LAUNCHER_DIRS["vlaunchers"]+vlauncher_data['name']+"/"+x, os.listdir(LAUNCHER_DIRS["vlaunchers"]+vlauncher_data['name'])))
-        
-        for i in mods:
-            mod = mcmm.get_mod_data(i)
-
-            if mod is not None:
-                if mod.name != '':
-                    self.mods_selected.append(mod)
-                    #self.ui.list_mods.addItem(mod.name)
-                    
-                    item = QtWidgets.QListWidgetItem()
-                    item.setText(mod.name)
-                    item.setToolTip(f"{mod.description}\n\nVersion: {mod.version}\nAuthors: {mod.authors}\n")
-                    self.ui.list_mods.addItem(item)
-
-                    print(f"Mod [ {mod.name} ] added succesfully")
-                else:
-                    print(f" Mod [ {mod.name} ] launcher type is incorrect")
-    
-    def onClick_add_mod(self):
-        """Add a mod to the list
-        """
-
-        mods = filedialog.askopenfilenames(filetypes=[('JAR files', '*.jar')])
-
-        for i in mods:
-            mod = mcmm.get_mod_data(i)
-
-            if mod is not None:
-                if mod.name != '' and mod.launcher_type == self.current_vlauncher_data['type']:
-                    self.mods_selected.append(mod)
-                    #self.ui.list_mods.addItem(mod.name)
-                    
-                    item = QtWidgets.QListWidgetItem()
-                    item.setText(mod.name)
-                    item.setToolTip(f"{mod.description}\n\nVersion: {mod.version}\nAuthors: {mod.authors}\n")
-                    self.ui.list_mods.addItem(item)
-                    
-                    mod_name = mod.path.split("/")[-1]
-                    shutil.copyfile(mod.path, LAUNCHER_DIRS["vlaunchers"]+self.current_vlauncher_data['name']+"/"+mod_name)
-
-                    print(f"Mod [ {mod.name} ] added succesfully")
-                else:
-                    print(f" Mod [ {mod.name} ] launcher type is incorrect")
-    
-    def onClick_remove_mod(self):
-        """Remove a mod from the list
-        """
-
-        selected_items = self.ui.list_mods.selectedItems()
-        if len(selected_items) != 0:
-            for item in reversed(selected_items):
-                row = self.ui.list_mods.row(item)
-
-                self.ui.list_mods.takeItem(row)
-                os.remove(self.mods_selected[row].path)
-                self.mods_selected.remove(self.mods_selected[row])
-
-                print(f"Mod [ row:{row} ] removed")
-    
-    def onClick_save(self):
-        """Save the current version of the vlauncher to the file and closes the window.
-        """        
-        
-        if self.ui.comboBox_avalableVersions.currentText() != self.current_vlauncher_data['version']:
-            CONFIG_MANAGER.update_config_data(f"vlaunchers.vlaunchers.{self.current_vlauncher_index}.version", \
-                                                               self.ui.comboBox_avalableVersions.currentText(), update_save=True)
-                
-        self.hide()
-
-
-#=========================================================              =========================================================
-#========================================================= CreateWindow =========================================================
-#=========================================================              =========================================================
-
-class CreateWindow(QtWidgets.QMainWindow):
-    """Class for create_window where creating new VLaunchers.
-    """
-
-    onClick_create = pyqtSignal(str, int, str, list)
-    mods_selected = []
-
-    def __init__(self):
-        super(CreateWindow, self).__init__()
-        self.ui = Ui_CreateWindow()
-        self.ui.setupUi(self)
-
-
-        versions = mm.get_all_versions()
-
-        for i in versions:
-            self.ui.comboBox_avalableTypes.addItem(i[0])
-
-        self.ui.comboBox_avalableVersions.addItem("Vanilla")
-        self.ui.comboBox_avalableVersions.addItem("Forge")
-        self.ui.comboBox_avalableVersions.addItem("Fabric")
-        self.ui.comboBox_avalableVersions.currentIndexChanged\
-                                         .connect(self.onChanged_avalableVersions)
-                                         
-        self.ui.comboBox_avalableSubTypes.hide()
-        
-        self.ui.comboBox_avalableTypes.currentIndexChanged.connect(self.onChanged_avalableTypes)
-
-        # устанавливаем кнопки модов и строки имени на выключено при ваниле
-        self.ui.button_mod_add.setEnabled(False)
-        self.ui.button_mod_remove.setEnabled(False)
-        self.ui.line_launcherName.setEnabled(False)
-
-        self.ui.button_create.clicked.connect(self.onClicked_create)
-
-        self.ui.button_mod_add.clicked.connect(self.onClicked_mod_add)
-        self.ui.button_mod_remove.clicked.connect(self.onClicked_mod_remove)
-
-    def onClicked_create(self):
-        """Callback when the create button is clicked .
-        """
-
-        self.ui.button_mod_add.setEnabled(False)
-        self.ui.button_mod_remove.setEnabled(False)
-        self.ui.line_launcherName.setEnabled(False)
-        self.ui.button_create.setEnabled(False)
-        self.ui.comboBox_avalableTypes.setEnabled(False)
-        self.ui.comboBox_avalableSubTypes.setEnabled(False)
-        self.ui.comboBox_avalableVersions.setEnabled(False)
-        self.onClick_create.emit(self.ui.comboBox_avalableTypes.currentText()+"-"+self.ui.comboBox_avalableSubTypes.currentText(), \
-                                 self.ui.comboBox_avalableVersions.currentIndex(), \
-                                 self.ui.line_launcherName.text(), \
-                                 self.mods_selected)
-
-    def onClicked_mod_add(self):
-        """Add a mod to the list
-        """
-
-        mods = filedialog.askopenfilenames(filetypes=[('JAR files', '*.jar')])
-        index = self.ui.comboBox_avalableVersions.currentIndex()
-
-        for i in mods:
-            mod = mcmm.get_mod_data(i)
-
-            if mod is not None:
-                if mod.name != '' and mod.launcher_type == ((index == 1)*"forge" + (index == 2)*"fabric"):
-                    self.mods_selected.append(mod)
-                    #self.ui.list_mods.addItem(mod.name)
-                    
-                    item = QtWidgets.QListWidgetItem()
-                    item.setText(mod.name)
-                    item.setToolTip(f"{mod.description}\n\nVersion: {mod.version}\nAuthors: {mod.authors}\n")
-                    self.ui.list_mods.addItem(item)
-
-                    print(f"Mod [ {mod.name} ] added succesfully")
-                else:
-                    print(f" Mod [ {mod.name} ] launcher type is incorrect")
-
-    def onClicked_mod_remove(self):
-        """Remove a mod from the list
-        """
-
-        selected_items = self.ui.list_mods.selectedItems()
-        if len(selected_items) != 0:
-            for item in reversed(selected_items):
-                row = self.ui.list_mods.row(item)
-
-                self.ui.list_mods.takeItem(row)
-                self.mods_selected.remove(self.mods_selected[row])
-
-                print(f"Mod [ row:{row} ] removed")
-
-    def onChanged_avalableTypes(self):
-        if self.ui.comboBox_avalableVersions.currentIndex() != 1: 
-            return
-        
-        versions = mm.get_all_versions(1.1)
-        self.ui.comboBox_avalableSubTypes.clear()
-        self.ui.comboBox_avalableSubTypes.show()
-            
-        for j in versions[self.ui.comboBox_avalableTypes.currentIndex()]["minor"]: #type: ignore
-            self.ui.comboBox_avalableSubTypes.addItem(j)
-    
-    def onChanged_avalableVersions(self):
-        """Called when the user has changed the version.
-        """
-
-        self.mods_selected.clear()
-        self.ui.list_mods.clear()
-
-        if self.ui.comboBox_avalableVersions.currentIndex() == 0:
-            versions = mm.get_all_versions()
-            self.ui.comboBox_avalableTypes.clear()
-            self.ui.comboBox_avalableSubTypes.hide()
-
-            for i in versions: #type: ignore
-                self.ui.comboBox_avalableTypes.addItem(i[0])
-
-            self.ui.button_mod_add.setEnabled(False)
-            self.ui.button_mod_remove.setEnabled(False)
-            self.ui.line_launcherName.setEnabled(False)
-        else:
-            self.ui.button_mod_add.setEnabled(True)
-            self.ui.button_mod_remove.setEnabled(True)
-            self.ui.line_launcherName.setEnabled(True)
-
-            index = self.ui.comboBox_avalableVersions.currentIndex()
-            
-            match index:
-                case 1:
-                    versions = mm.get_all_versions(1.1)
-                    self.ui.comboBox_avalableTypes.clear()
-
-                    for i in versions: #type: ignore
-                        self.ui.comboBox_avalableTypes.addItem(i["major"]) #type: ignore
-                case 2:
-                    versions = mm.get_all_versions(2)
-                    self.ui.comboBox_avalableTypes.clear()
-                    self.ui.comboBox_avalableSubTypes.hide()
-
-                    for i in versions: #type: ignore
-                        self.ui.comboBox_avalableTypes.addItem(i[0])
-
-    def reset(self):
-        """Reset the state of the editor to its initial state.
-        """
-
-        self.mods_selected = []
-        self.ui.list_mods.clear()
-
-        self.ui.button_create.setEnabled(True)
-        self.ui.comboBox_avalableTypes.setEnabled(True)
-        self.ui.comboBox_avalableSubTypes.setEnabled(True)
-        self.ui.comboBox_avalableSubTypes.hide()
-        self.ui.comboBox_avalableVersions.setEnabled(True)
-
-        self.ui.comboBox_avalableVersions.setCurrentIndex(0)
-        self.ui.line_launcherName.setText("")
-
-
-#=========================================================             =========================================================
-#========================================================= LogInWindow =========================================================
-#=========================================================             =========================================================
-
-class LogInWindow(QtWidgets.QMainWindow):
-    """Class for microsoft login window.
-    """    
-    
-    succesfull_login = pyqtSignal(str)
-    
-    def __init__(self):
-        super(LogInWindow, self).__init__()
-        self.ui = Ui_LogInWindow()
-        self.ui.setupUi(self)
-        
-        self.setWindowTitle("Log In")
-        
-        self.ui.button_login.clicked.connect(self.onClick_login)
-        self.ui.button_cancel.clicked.connect(self.onClick_cancel)
-    
-    def onClick_login(self):
-        """Callback thar is called when the user clicks on the login button
-        """        
-        
-        login = self.ui.line_login.text().replace(" ", "")
-        password = self.ui.line_password.text().replace(" ", "")
-        
-        if (login == "" or password == ""): 
-            return
-        
-        try:
-            print("====================== Connecting to Mojang servers ======================")
-            
-            client = Client(login, password)
-        except Exception as err:
-            print(f"ERROR. Login failed. Error: {err}")
-            if POPUP_WINDOW: 
-                POPUP_WINDOW.update("Error", f"Login failed. Error: {err}")
-            return
-        
-        profile = client.get_profile()
-        
-        print("====================== Save data ======================")
-        
-        CONFIG_MANAGER.update_config_data("player.Player.username", profile.name)
-        CONFIG_MANAGER.update_config_data("player.Mojang.have_licence", str(1))
-        
-        print("====================== Save crypted data ======================")
-        
-        CONFIG_MANAGER.update_config_data("player.Mojang.access_code", encode_str(SECRET_CRYPTO_KEY, \
-                                                                            CONFIG_MANAGER.get_config("player.Mojang.crypto_vi"), \
-                                                                            str(client.bearer_token)))
-        CONFIG_MANAGER.update_config_data("player.Mojang.uuid", str(profile.id), update_save=True)
-        
-        self.succesfull_login.emit(profile.name)
-    
-    def onClick_cancel(self):
-        """Hide the window.
-        """        
-        
-        self.hide()
-
-
 #=========================================================            =========================================================
 #========================================================= MainWindow =========================================================
 #=========================================================            =========================================================
@@ -732,7 +274,79 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ui.button_delete.clicked.connect(self.onClick_delete)
         self.ui.button_microsoftAccount.setIcon(QIcon(ASSETS_DIRS["microsoft_icon"]))
         
+        self.ui.comboBox_avalableTypes.addItem("Installed")
+        self.ui.comboBox_avalableTypes.addItem("VLaunchers")
+        self.ui.comboBox_avalableTypes.currentTextChanged.connect(self.onChanged_type)
 
+        self.username = str(CONFIG_MANAGER.get_config("player.Player.username"))
+
+        self.ui.lineEdit.setText(self.username)
+        self.ui.lineEdit.editingFinished.connect(self.save_username)
+
+        self.launch_thread = LaunchThread()
+        self.launch_thread.progress_update_signal.connect(self.update_progress)
+        self.launch_thread.run_complete_callback.connect(self.run_callback)
+        
+        if CONFIG_MANAGER.get_config("player.Mojang.have_licence") == "1":
+            try:
+                client = None
+                
+                try:
+                    client = Client(bearer_token=str(decode_str(SECRET_CRYPTO_KEY, \
+                                                            CONFIG_MANAGER.get_config("player.Mojang.crypto_vi"), \
+                                                            CONFIG_MANAGER.get_config("player.Mojang.access_code"))))
+                except (errors.TooManyRequests, ConnectionError):
+                    reconnect_try = 0
+                    
+                    while 1:
+                        try: 
+                            reconnect_try += 1
+                            client = Client(bearer_token=str(decode_str(SECRET_CRYPTO_KEY, \
+                                                            CONFIG_MANAGER.get_config("player.Mojang.crypto_vi"), \
+                                                            CONFIG_MANAGER.get_config("player.Mojang.access_code"))))
+
+                            break
+                        except (errors.TooManyRequests, ConnectionError) as e:
+                            if reconnect_try >= 10:
+                                print("ERROR: Too many requests. Retry later")
+                                time.sleep(10)
+                                
+                                sys.exit(0)
+                            
+                            retry_time = 5
+                            if isinstance(e, errors.TooManyRequests):
+                                retry_time = 10
+                                
+                            error = str(type(e))
+                            
+                            time_to_sleep = retry_time
+                            sys.stdout.write(f"\rERROR: Bad server request. Retrying in {time_to_sleep} seconds. Retry try: {reconnect_try}")
+                            
+                            for i in range(retry_time):
+                                time.sleep(1)
+                                time_to_sleep -= 1
+                                sys.stdout.write(f"\rERROR: Bad server request. Retrying in {time_to_sleep} seconds. Retry try: {reconnect_try}")
+                
+                print()
+                profile = client.get_profile()
+
+                CONFIG_MANAGER.update_config_data("player.Player.username", profile.name)
+                CONFIG_MANAGER.update_config_data("player.Mojang.uuid", profile.id)
+                CONFIG_MANAGER.update_config_data("player.Mojang.have_licence", str(1))
+                CONFIG_MANAGER.update_config_data("player.Mojang.access_code", encode_str(SECRET_CRYPTO_KEY, \
+                                                                                    CONFIG_MANAGER.get_config("player.Mojang.crypto_vi"), \
+                                                                                    str(client.bearer_token)), update_save=True)
+                
+                self.ui.button_microsoftAccount.setToolTip(f"You are already logged in\nProfile ID: {profile.id}")
+                self.ui.lineEdit.setEnabled(False)
+            except errors.MissingMinecraftLicense:
+                print("ERROR: Your login code has expired. Please log in again.")
+                if POPUP_WINDOW:
+                    POPUP_WINDOW.update("Code has expired", "Your login code has expired. Please log in again.")
+                
+                CONFIG_MANAGER.update_config_data("player.Mojang.have_licence", str(0))
+         
+            
         installed_versions = mm.get_installed_versions()
 
         for i in installed_versions:
@@ -743,16 +357,16 @@ class MainWindow(QtWidgets.QMainWindow):
         enabled = len(installed_versions) != 0
         self.ui.button_check.setEnabled(enabled)
         self.ui.button_delete.setEnabled(enabled)
-        
-        self.ui.comboBox_avalableTypes.addItem("Installed")
-        self.ui.comboBox_avalableTypes.addItem("VLaunchers")
-        self.ui.comboBox_avalableTypes.currentTextChanged.connect(self.onChanged_type)
+
+
+        if int(CONFIG_MANAGER.get_config("player.Player.path_num")) != PATH_NUM: # type: ignore
+            CONFIG_MANAGER.update_config_data("player.Player.path_num", str(PATH_NUM))
 
         self.username = str(CONFIG_MANAGER.get_config("player.Player.username"))
-
+        
         self.ui.lineEdit.setText(self.username)
-        self.ui.lineEdit.editingFinished.connect(self.save_username)
-
+        
+        
         self.download_window = DownloadWindow()
         self.download_window.setWindowTitle("Downloading")
 
@@ -760,14 +374,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.create_window.setWindowTitle("Create new")
         self.create_window.onClick_create.connect(self.install)
         
-        self.edit_window = EditWindow()
+        self.edit_window = EditWindow(CONFIG_MANAGER)
         self.edit_window.setWindowTitle("Edit")
         
-        self.login_window = LogInWindow()
+        self.login_window = LogInWindow(CONFIG_MANAGER, encode_str, SECRET_CRYPTO_KEY, POPUP_WINDOW)
         self.login_window.setWindowTitle("Log In")
         self.login_window.succesfull_login.connect(self.succesful_login)
         self.ui.button_microsoftAccount.clicked.connect(self.login_window.show)
-
+        
         with open(CSS_STYLESHEET, "r") as f:
             css = f.read()
 
@@ -778,34 +392,6 @@ class MainWindow(QtWidgets.QMainWindow):
             self.login_window.setStyleSheet(css)
             if POPUP_WINDOW: 
                 POPUP_WINDOW.setStyleSheet(css)
-
-        self.launch_thread = LaunchThread()
-        self.launch_thread.progress_update_signal.connect(self.update_progress)
-        self.launch_thread.run_complete_callback.connect(self.run_callback)
-        
-        if CONFIG_MANAGER.get_config("player.Mojang.have_licence") == "1":
-            client = Client(bearer_token=str(decode_str(SECRET_CRYPTO_KEY, \
-                                                    CONFIG_MANAGER.get_config("player.Mojang.crypto_vi"), \
-                                                    CONFIG_MANAGER.get_config("player.Mojang.access_code"))))
-            
-            profile = client.get_profile()
-            
-            CONFIG_MANAGER.update_config_data("player.Player.username", profile.name)
-            CONFIG_MANAGER.update_config_data("player.Mojang.uuid", profile.id)
-            CONFIG_MANAGER.update_config_data("player.Mojang.have_licence", str(1))
-            CONFIG_MANAGER.update_config_data("player.Mojang.access_code", encode_str(SECRET_CRYPTO_KEY, \
-                                                                                CONFIG_MANAGER.get_config("player.Mojang.crypto_vi"), \
-                                                                                str(client.bearer_token)), update_save=True)
-            
-            self.ui.button_microsoftAccount.setToolTip(f"You are already logged in\nProfile ID: {profile.id}")
-            self.ui.lineEdit.setEnabled(False)
-
-        if int(CONFIG_MANAGER.get_config("player.Player.path_num")) != PATH_NUM: # type: ignore
-            CONFIG_MANAGER.update_config_data("player.Player.path_num", str(PATH_NUM))
-
-        self.username = str(CONFIG_MANAGER.get_config("player.Player.username"))
-        
-        self.ui.lineEdit.setText(self.username)
 
     def install(self, version:str, _type:int, name="", mods: list[mcmm.ModData]=[]):
         """install a new mc version (or vlauncher)

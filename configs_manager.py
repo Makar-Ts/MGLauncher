@@ -1,4 +1,4 @@
-# pylint: disable=line-too-long, consider-using-dict-items, invalid-name, import-error, multiple-imports, unspecified-encoding, broad-exception-caught, trailing-whitespace, no-name-in-module, unused-import
+# pylint: disable=line-too-long, pointless-string-statement, consider-using-dict-items, invalid-name, import-error, multiple-imports, unspecified-encoding, broad-exception-caught, trailing-whitespace, no-name-in-module, unused-import
 """Module for easily reading, writing and configuring configs
 """
 
@@ -8,27 +8,6 @@ import configparser, json
 #=========================================================           =========================================================
 #========================================================= Constants =========================================================
 #=========================================================           =========================================================
-
-CONFIGS_STRUCTURES = {
-    "vlaunchers": { 
-        "vlaunchers": []
-    },
-    
-    "player": {
-        "Player": {
-            "username": "player",
-            "PATH_NUM": 2
-        },
-        "Mojang": {
-            "have_licence": 0,
-            "access_code": "",
-            "uuid": ""
-        },
-        "Java": {
-            "args": ""
-        }
-    }
-}
 
 """ files structures 
 
@@ -46,7 +25,9 @@ player_data.ini:
 
     [Mojang]
     have_licence = 0 
-    access_code =     # при запуске если have_licence == 1 обновляется
+    access_code =     # при запуске если have_licence == 1 обновляется (зашифровано, хранится в base64)
+    uuid = 
+    crypto_vi =       # вектор щифровки (хранится в base64)
 
     [Java]
     args =            # аргументы запуска mc
